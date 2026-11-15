@@ -1,0 +1,72 @@
+/* ==========================================================================
+   NIO FAR — Design tokens (source unique de vérité pour les couleurs,
+   typographies, rayons et ombres). Les valeurs JS équivalentes pour la 3D
+   sont dans src/lib/tokens.ts.
+   ========================================================================== */
+
+@theme {
+  /* Palette de marque */
+  --color-forest: #0b6b4f;
+  --color-forest-700: #08523d;
+  --color-mint: #4cc9a0;
+  --color-ochre: #e0a21b;
+  --color-ochre-400: #ebb23a;
+  --color-sand: #f6f1e7;
+  --color-ink: #14231c;
+
+  /* Couleurs de catégories */
+  --color-cat-dechets: #e0a21b;
+  --color-cat-eau: #2f8fbf;
+  --color-cat-eclairage: #f2c94c;
+  --color-cat-voirie: #c8553d;
+
+  /* Typographies */
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Public Sans Variable", "Public Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* Rayons */
+  --radius-4xl: 2rem;
+  --radius-5xl: 2.5rem;
+
+  /* Ombres douces */
+  --shadow-soft: 0 18px 40px -22px rgb(20 35 28 / 0.35), 0 2px 6px -2px rgb(20 35 28 / 0.08);
+  --shadow-glow: 0 0 0 1px rgb(76 201 160 / 0.25), 0 24px 60px -24px rgb(11 107 79 / 0.6);
+  --shadow-cta: 0 14px 34px -12px rgb(224 162 27 / 0.75);
+}
+
+/* Couleurs sémantiques (mode clair / sombre) */
+:root {
+  --bg: #f6f1e7;
+  --bg-elev: #fffdf8;
+  --fg: #14231c;
+  --fg-muted: #3e5048;
+  --accent: #0b6b4f;
+  --accent-fg: #ffffff;
+  --line: rgb(20 35 28 / 0.12);
+  --glass-bg: rgb(255 253 248 / 0.62);
+  --glass-border: rgb(20 35 28 / 0.09);
+  --ring: #0b6b4f;
+}
+
+.dark {
+  --bg: #14231c;
+  --bg-elev: #1b2e25;
+  --fg: #f6f1e7;
+  --fg-muted: #b8c8bf;
+  --accent: #4cc9a0;
+  --accent-fg: #14231c;
+  --line: rgb(246 241 231 / 0.12);
+  --glass-bg: rgb(27 46 37 / 0.55);
+  --glass-border: rgb(246 241 231 / 0.1);
+  --ring: #4cc9a0;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elev: var(--bg-elev);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-line: var(--line);
+}

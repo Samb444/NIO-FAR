@@ -1,0 +1,14 @@
+{
+  "name": "nio-far",
+  "private": true,
+  "version": "0.1.0",
+  "description": "NIO FAR — plateforme citoyenne de suivi des problèmes de proximité en banlieue de Dakar.",
+  "workspaces": [
+    "client"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w client --",
+    "build": "npm run build -w client",
+    "preview": "npm run preview -w client --"
+  }
+}

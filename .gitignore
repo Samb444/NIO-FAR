@@ -1,0 +1,29 @@
+# Dépendances
+node_modules/
+
+# Fichiers générés
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Secrets / environnement
+.env
+.env.*
+!.env.example
+
+# Déploiement
+.vercel/
+.netlify/
+
+# Journaux & OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Éditeurs
+.vscode/*
+!.vscode/extensions.json
+.idea/
