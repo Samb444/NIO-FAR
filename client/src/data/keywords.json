@@ -1,0 +1,27 @@
+{
+  "_lisezMoi": "Mots-clés utilisés pour SUGGÉRER une catégorie à partir de la description (dictée ou écrite). Ce fichier est éditable. La liste wolof est VOLONTAIREMENT VIDE : elle doit être complétée et validée par un locuteur natif. N'ajoutez que des mots vérifiés. Mettez 'valide' à true après relecture.",
+  "version": 1,
+  "langues": {
+    "fr": {
+      "valide": false,
+      "relecteur": "",
+      "categories": {
+        "dechets": ["déchet", "déchets", "ordure", "ordures", "poubelle", "poubelles", "bac", "décharge", "dépôt sauvage", "sachet", "sachets", "plastique", "saleté", "sale", "odeur", "puanteur", "mouches", "tas"],
+        "eau_stagnante": ["eau", "eaux", "inondation", "inondé", "inondée", "flaque", "mare", "stagnante", "stagnant", "caniveau", "égout", "canalisation", "pluie", "boue", "moustiques", "submergé"],
+        "eclairage": ["lampadaire", "lampadaires", "lumière", "éclairage", "ampoule", "poteau", "noir", "obscurité", "sombre", "éteint", "éteints", "nuit", "clignote"],
+        "voirie": ["route", "rue", "trou", "trous", "nid-de-poule", "nids-de-poule", "chaussée", "goudron", "bitume", "regard", "plaque", "ensablement", "sable", "trottoir", "pavé", "fissure"]
+      }
+    },
+    "wo": {
+      "valide": false,
+      "relecteur": "",
+      "_aCompleter": "Ajoutez ici les mots wolof (orthographe usuelle et variantes courantes) après validation par un locuteur natif.",
+      "categories": {
+        "dechets": [],
+        "eau_stagnante": [],
+        "eclairage": [],
+        "voirie": []
+      }
+    }
+  }
+}

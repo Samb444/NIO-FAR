@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+﻿import { motion } from 'framer-motion';
 import type { CategoryId } from '../lib/tokens';
 import { categoryColors } from '../lib/tokens';
 
@@ -8,7 +8,7 @@ export function CategoryIcon({ id }: { id: CategoryId }) {
   switch (id) {
     case 'dechets':
       return <TrashIcon color={color} />;
-    case 'eau':
+    case 'eau_stagnante':
       return <WaterIcon color={color} />;
     case 'eclairage':
       return <LampIcon color={color} />;

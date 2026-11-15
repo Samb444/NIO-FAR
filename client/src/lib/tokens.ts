@@ -7,11 +7,11 @@ export const palette = {
   ink: '#14231C',
 } as const;
 
-export type CategoryId = 'dechets' | 'eau' | 'eclairage' | 'voirie';
+export type CategoryId = 'dechets' | 'eau_stagnante' | 'eclairage' | 'voirie';
 
 export const categoryColors: Record<CategoryId, string> = {
   dechets: '#E0A21B',
-  eau: '#2F8FBF',
+  eau_stagnante: '#2F8FBF',
   eclairage: '#F2C94C',
   voirie: '#C8553D',
 };

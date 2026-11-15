@@ -8,7 +8,7 @@ import { categoryColors } from '../lib/tokens';
 export function HeroFallback({ className = '' }: { className?: string }) {
   const pins: { x: number; y: number; c: string }[] = [
     { x: 92, y: 168, c: categoryColors.dechets },
-    { x: 196, y: 214, c: categoryColors.eau },
+    { x: 196, y: 214, c: categoryColors.eau_stagnante },
     { x: 300, y: 112, c: categoryColors.eclairage },
     { x: 236, y: 178, c: categoryColors.voirie },
   ];

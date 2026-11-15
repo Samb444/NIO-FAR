@@ -1,4 +1,4 @@
-import type { CategoryId } from './tokens';
+﻿import type { CategoryId } from './tokens';
 
 export type Category = {
   id: CategoryId;
@@ -15,7 +15,7 @@ export const categories: Category[] = [
     examples: 'Tas d’ordures, bac plein, dépôt sauvage',
   },
   {
-    id: 'eau',
+    id: 'eau_stagnante',
     label: 'Eau stagnante',
     description: 'Inondations, flaques persistantes, caniveaux bouchés après la pluie.',
     examples: 'Rue inondée, caniveau bouché, mare',

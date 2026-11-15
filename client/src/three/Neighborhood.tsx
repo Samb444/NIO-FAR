@@ -38,7 +38,7 @@ export function Neighborhood({ dark }: { dark: boolean }) {
 
         {/* Marqueurs de signalement */}
         <Marker position={[-2.2, GROUND_Y, 0.78]} height={1.2} color={categoryColors.dechets} phase={0} />
-        <Marker position={[-0.18, GROUND_Y, 1.12]} height={0.95} color={categoryColors.eau} phase={0.9} />
+        <Marker position={[-0.18, GROUND_Y, 1.12]} height={0.95} color={categoryColors.eau_stagnante} phase={0.9} />
         <Marker position={[1.95, GROUND_Y, 0.72]} height={2.05} color={categoryColors.eclairage} phase={1.7} />
         <Marker position={[0.55, GROUND_Y, 0.12]} height={1.0} color={categoryColors.voirie} phase={2.4} />
       </group>

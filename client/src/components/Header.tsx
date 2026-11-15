@@ -7,9 +7,9 @@ import { ThemeToggle } from './ThemeToggle';
 
 const links = [
   { to: '/#comment-ca-marche', label: 'Comment ça marche' },
-  { to: '/#categories', label: 'Catégories' },
-  { to: '/#engagement', label: 'Engagement' },
-  { to: '/signalements', label: 'Signalements' },
+  { to: '/#transparence', label: 'Transparence' },
+  { to: '/suivre', label: 'Suivre un code' },
+  { to: '/signalements', label: 'Carte & liste' },
 ];
 
 export function Header() {

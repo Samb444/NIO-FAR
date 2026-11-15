@@ -16,7 +16,8 @@ export function Footer() {
           <h2 className="mb-3 text-sm font-bold uppercase tracking-[0.14em] text-fg-muted">Plateforme</h2>
           <ul className="space-y-1">
             <li><Link className="inline-flex min-h-11 items-center hover:text-accent" to="/signaler">Signaler un problème</Link></li>
-            <li><Link className="inline-flex min-h-11 items-center hover:text-accent" to="/signalements">Voir les signalements</Link></li>
+            <li><Link className="inline-flex min-h-11 items-center hover:text-accent" to="/suivre">Suivre avec un code</Link></li>
+            <li><Link className="inline-flex min-h-11 items-center hover:text-accent" to="/signalements">Carte et liste</Link></li>
           </ul>
         </nav>
         <nav aria-label="Sections de la page d'accueil">

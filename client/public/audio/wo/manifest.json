@@ -1,0 +1,4 @@
+{
+  "_lisezMoi": "Associez chaque statut à un fichier audio enregistré par un locuteur natif wolof (ex. \"recu\": \"statut-recu.mp3\"). Laissez vide tant que l'enregistrement n'est pas validé : le bouton wolof restera masqué.",
+  "fichiers": {}
+}
