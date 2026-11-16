@@ -8,14 +8,22 @@ coverage/
 *.tsbuildinfo
 .vite/
 
+# Données locales & uploads
+.data/
+uploads/
+*.sqlite
+*.db
+
 # Secrets / environnement
 .env
 .env.*
 !.env.example
 
-# Déploiement
+# Déploiement & tunnels
 .vercel/
 .netlify/
+cloudflared.exe
+*.pem
 
 # Journaux & OS
 *.log

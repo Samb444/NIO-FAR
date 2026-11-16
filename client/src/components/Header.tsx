@@ -6,10 +6,10 @@ import { Logo } from './Logo';
 import { ThemeToggle } from './ThemeToggle';
 
 const links = [
-  { to: '/#comment-ca-marche', label: 'Comment ça marche' },
-  { to: '/#transparence', label: 'Transparence' },
-  { to: '/suivre', label: 'Suivre un code' },
   { to: '/signalements', label: 'Carte & liste' },
+  { to: '/suivre', label: 'Suivre un code' },
+  { to: '/transparence', label: 'Transparence' },
+  { to: '/admin', label: 'Admin' },
 ];
 
 export function Header() {

@@ -18,6 +18,8 @@ export function Footer() {
             <li><Link className="inline-flex min-h-11 items-center hover:text-accent" to="/signaler">Signaler un problème</Link></li>
             <li><Link className="inline-flex min-h-11 items-center hover:text-accent" to="/suivre">Suivre avec un code</Link></li>
             <li><Link className="inline-flex min-h-11 items-center hover:text-accent" to="/signalements">Carte et liste</Link></li>
+            <li><Link className="inline-flex min-h-11 items-center hover:text-accent" to="/transparence">Transparence & Open Data</Link></li>
+            <li><Link className="inline-flex min-h-11 items-center hover:text-accent" to="/admin">Espace Administration</Link></li>
           </ul>
         </nav>
         <nav aria-label="Sections de la page d'accueil">

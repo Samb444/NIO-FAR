@@ -256,30 +256,41 @@ export default function FicheSignalement() {
             </motion.div>
           )}
 
-          {/* Bouton « Je confirme ce problème » */}
-          <div className="glass flex flex-col justify-between gap-4 rounded-4xl p-5 shadow-soft sm:flex-row sm:items-center">
-            <div>
-              <p className="font-bold">
-                {s.confirmations} confirmation{s.confirmations > 1 ? 's' : ''} d’habitants · priorité indicative {priorite(s)}
-              </p>
-              <p className="text-sm text-fg-muted">Vous voyez aussi ce problème dans le quartier ? Confirmez-le (une fois par appareil).</p>
+          {/* Bouton « Je confirme ce problème » + Priorisation transparente */}
+          <div className="glass space-y-4 rounded-4xl p-5 shadow-soft">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+              <div>
+                <p className="font-bold">
+                  {s.confirmations} confirmation{s.confirmations > 1 ? 's' : ''} d’habitants · Score de priorité {priorite(s)}
+                </p>
+                <p className="text-sm text-fg-muted">Vous voyez aussi ce problème dans le quartier ? Confirmez-le (une fois par appareil).</p>
+              </div>
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.95 }}
+                disabled={dejaConfirme || action !== 'repos'}
+                onClick={() => void confirmer()}
+                className={`${btn.base} ${dejaConfirme ? btn.secondary : btn.primary} shrink-0`}
+              >
+                {action === 'confirmation' ? (
+                  <Loader2 size={18} className="animate-spin" aria-hidden />
+                ) : dejaConfirme ? (
+                  <Check size={18} aria-hidden />
+                ) : (
+                  <ThumbsUp size={18} aria-hidden />
+                )}
+                {dejaConfirme ? 'Déjà confirmé sur cet appareil' : 'Je confirme ce problème'}
+              </motion.button>
             </div>
-            <motion.button
-              type="button"
-              whileTap={{ scale: 0.95 }}
-              disabled={dejaConfirme || action !== 'repos'}
-              onClick={() => void confirmer()}
-              className={`${btn.base} ${dejaConfirme ? btn.secondary : btn.primary} shrink-0`}
-            >
-              {action === 'confirmation' ? (
-                <Loader2 size={18} className="animate-spin" aria-hidden />
-              ) : dejaConfirme ? (
-                <Check size={18} aria-hidden />
-              ) : (
-                <ThumbsUp size={18} aria-hidden />
-              )}
-              {dejaConfirme ? 'Déjà confirmé sur cet appareil' : 'Je confirme ce problème'}
-            </motion.button>
+            {s.prioriteDetail && (
+              <details className="rounded-2xl border border-line bg-bg-elev px-4 py-2.5 text-xs">
+                <summary className="cursor-pointer font-bold text-accent">
+                  Pourquoi ce score de priorité ({s.prioriteDetail.score} pts) ?
+                </summary>
+                <p className="mt-1.5 font-mono text-[11px]">{s.prioriteDetail.formule}</p>
+                <p className="mt-1 text-fg-muted">{s.prioriteDetail.explication}</p>
+              </details>
+            )}
           </div>
           {erreurAction && (
             <p role="alert" className="rounded-2xl bg-[#C8553D]/12 px-4 py-3 text-sm">

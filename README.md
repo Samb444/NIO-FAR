@@ -8,34 +8,26 @@ Plateforme citoyenne de suivi des problèmes de proximité en banlieue de Dakar 
 ## Démarrer
 
 ```bash
-npm install      # à la racine (workspaces npm)
-npm run dev      # http://localhost:5173
-npm run build    # build de production dans client/dist
+cp .env.example .env
+# Optionnel : lancer PostgreSQL 16 via Docker (sinon repli automatique sur PostgreSQL embarqué PGlite)
+docker compose up -d
+
+npm install      # à la racine (workspaces client + server)
+npm run seed     # crée les comptes démo (admin + relais) et les exemples étiquetés « Exemple fictif »
+npm run dev      # démarre l'API + le serveur sur http://localhost:4000
+npm run dev:client # démarre Vite sur http://localhost:5173 (avec proxy /api)
+npm run test     # exécute la suite de tests Vitest + Supertest
+npm run build    # compile le front (client/dist) et le backend (server/dist)
 ```
 
-Tester sur téléphone (même Wi-Fi) : `npm run dev -- --host`.
+## Comptes de démonstration (`/admin`)
+
+- **Administrateur** : `admin@niofar.sn` / `NioFar2026!`
+- **Relais de quartier** : `relais@niofar.sn` / `Relais2026!` (peut uniquement marquer « vérifié sur place » et ajouter une note)
 
 ## Stack
 
-- **client/** — Vite, React, TypeScript, Tailwind CSS v4, Framer Motion, React Router
-- **3D** — three, @react-three/fiber, @react-three/drei
-- **server/** — Node.js + Express (prévu à l'étape 3)
-
-## Structure
-
-```
-client/src/
-  components/   UI (Header, Hero, sections, icônes animées…)
-  pages/        Routes (/, /signaler, /signalements)
-  three/        Scène 3D du hero (lazy-loaded)
-  lib/          Tokens JS, thème clair/sombre, détection WebGL, données
-  styles/       tokens.css (design tokens centralisés) + global.css
-```
-
-## Performance & accessibilité
-
-- 3D chargée en lazy-loading, ~2 500 triangles, pas d'ombres temps réel, pixel ratio plafonné à 1.5,
-  rendu suspendu hors écran.
-- Fallback SVG statique si WebGL est indisponible, si l'économiseur de données est actif
-  ou si `prefers-reduced-motion` est activé.
-- Contrastes AA, zones tactiles ≥ 44 px, lien d'évitement, navigation clavier, balises sémantiques.
+- **client/** — Vite, React 19, TypeScript, Tailwind CSS v4, Framer Motion, React Router, Recharts, Leaflet
+- **3D** — Three.js, `@react-three/fiber`, `@react-three/drei` (scène d'accueil + barres 3D par secteur avec repli 2D)
+- **server/** — Node.js, Express, TypeScript, PostgreSQL (`pg` + `@electric-sql/pglite`), Drizzle ORM, Zod, Argon2, JWT en cookie `httpOnly` + protection CSRF, `node-cron`, Helmet, Rate Limiting
+- **tests/** — Vitest + Supertest (`server/src/__tests__/api.test.ts`)

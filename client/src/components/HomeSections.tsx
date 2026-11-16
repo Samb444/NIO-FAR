@@ -262,12 +262,12 @@ export function SectionTransparence() {
                       ))}
                     </dl>
                   </div>
-                  <p className="mt-4 flex items-center justify-between text-sm text-fg-muted">
+                  <p className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-fg-muted">
                     <span className="inline-flex items-center gap-1.5">
                       <Users size={16} aria-hidden /> {etat.donnees.totalConfirmations} confirmation{etat.donnees.totalConfirmations > 1 ? 's' : ''} citoyenne{etat.donnees.totalConfirmations > 1 ? 's' : ''}
                     </span>
-                    <a href="/signalements" className="inline-flex items-center gap-1 font-bold text-accent hover:underline">
-                      Voir la carte <ArrowRight size={15} aria-hidden />
+                    <a href="/transparence" className="inline-flex items-center gap-1 font-bold text-accent hover:underline">
+                      Tableau complet & Open Data <ArrowRight size={15} aria-hidden />
                     </a>
                   </p>
                 </div>

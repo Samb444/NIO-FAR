@@ -1,43 +1,24 @@
 /**
- * Faux service de données (étape 2).
- *
- * Expose EXACTEMENT l'interface de la future API REST (étape 3) : il suffira de remplacer
- * l'implémentation `ServiceSimule` par un client HTTP qui respecte `NioFarApi`.
- * Les données sont gardées en mémoire et recopiées dans IndexedDB pour survivre au rechargement.
- * Aucune donnée n'est préchargée : les exemples sont fictifs, étiquetés et chargés à la demande.
+ * Client HTTP de l'API NIO FAR (étape 3).
+ * Remplace l'ancien service simulé et dialogue directement avec le backend Express + PostgreSQL (/api).
  */
-import { idbEcrire, idbSupprimer, idbToutLire } from './idb';
-import { STATUTS } from './referentiel';
 import type {
   Categorie,
   FiltresSignalements,
   IndicateursPublics,
   NouveauSignalement,
-  Signalement,
+  SignalementAdmin,
   SignalementPublic,
   Statut,
+  UtilisateurSession,
 } from './types';
-import { genererCodeSuivi } from './utils';
-import { creerExemplesFictifs } from './exemples';
+import { genererUUID } from './utils';
 
-export interface NioFarApi {
-  listerSignalements(filtres?: FiltresSignalements): Promise<SignalementPublic[]>;
-  obtenirSignalement(id: string): Promise<SignalementPublic | null>;
-  obtenirParCode(code: string): Promise<SignalementPublic | null>;
-  /** Signalements ouverts de même catégorie et même secteur (anti-doublon). */
-  chercherSimilaires(categorie: Categorie, secteur: string): Promise<SignalementPublic[]>;
-  /** Idempotent : renvoyer deux fois le même `id` ne crée qu'un seul signalement. */
-  creerSignalement(donnees: NouveauSignalement): Promise<SignalementPublic>;
-  confirmerProbleme(id: string): Promise<SignalementPublic>;
-  repondreVerification(id: string, regle: boolean): Promise<SignalementPublic>;
-  indicateursPublics(): Promise<IndicateursPublics>;
-  chargerExemples(): Promise<number>;
-  retirerExemples(): Promise<void>;
-}
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '/api';
 
 export class ErreurReseau extends Error {
   constructor() {
-    super('Pas de connexion internet. Réessayez quand le réseau revient.');
+    super('Pas de connexion au serveur. Votre signalement peut être gardé hors-ligne.');
     this.name = 'ErreurReseau';
   }
 }
@@ -49,192 +30,288 @@ export class ErreurIntrouvable extends Error {
   }
 }
 
-/** Priorité indicative : gravité + confirmations des habitants. */
-export function priorite(s: Pick<Signalement, 'gravite' | 'confirmations'>): number {
-  return s.gravite * 2 + s.confirmations;
+/** Identifiant d'appareil anonyme persistant (haché par le serveur avec sel). */
+export function obtenirDeviceIdAnonyme(): string {
+  const CLE = 'niofar-device-anon-id';
+  try {
+    const existant = localStorage.getItem(CLE);
+    if (existant) return existant;
+    const nouveau = genererUUID();
+    localStorage.setItem(CLE, nouveau);
+    return nouveau;
+  } catch {
+    return 'appareil-navigateur';
+  }
 }
 
-function versPublic(s: Signalement): SignalementPublic {
-  const { contact: _contact, ...reste } = s;
-  void _contact;
-  return structuredClone(reste);
+/** Priorité transparente (utilise le score calculé par l'API ou la formule de repli). */
+export function priorite(
+  s: Pick<SignalementPublic, 'gravite' | 'confirmations' | 'priorite' | 'dateCreation'>,
+): number {
+  if (typeof s.priorite === 'number') return s.priorite;
+  const jours = s.dateCreation
+    ? Math.max(0, Math.floor((Date.now() - new Date(s.dateCreation).getTime()) / 86_400_000))
+    : 0;
+  return s.gravite * 2 + s.confirmations + Math.floor(jours / 3);
 }
 
-const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let csrfMemoire = '';
 
-class ServiceSimule implements NioFarApi {
-  private store = new Map<string, Signalement>();
-  private pret: Promise<void> | null = null;
+function lireCookieCsrf(): string {
+  if (csrfMemoire) return csrfMemoire;
+  if (typeof document === 'undefined') return '';
+  const m = document.cookie.match(/(?:^|;\s*)niofar_csrf=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
 
-  private init(): Promise<void> {
-    if (!this.pret) {
-      this.pret = idbToutLire<Signalement>('simulation')
-        .then((liste) => liste.forEach((s) => this.store.set(s.id, s)))
-        .catch(() => {
-          /* IndexedDB indisponible : on reste en mémoire seulement */
-        });
-    }
-    return this.pret;
+async function requete<T>(chemin: string, init?: RequestInit): Promise<T> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    throw new ErreurReseau();
   }
 
-  /** Simule la latence et l'absence de réseau. */
-  private async reseau(): Promise<void> {
-    await this.init();
-    if (typeof navigator !== 'undefined' && !navigator.onLine) throw new ErreurReseau();
-    await pause(250 + Math.random() * 400);
+  const headers = new Headers(init?.headers);
+  if (init?.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  headers.set('X-Device-Id', obtenirDeviceIdAnonyme());
+  const csrf = lireCookieCsrf();
+  if (csrf) headers.set('X-CSRF-Token', csrf);
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${chemin}`, {
+      ...init,
+      headers,
+      credentials: 'include',
+    });
+  } catch {
+    throw new ErreurReseau();
   }
 
-  private async sauver(s: Signalement): Promise<void> {
-    this.store.set(s.id, s);
-    try {
-      await idbEcrire('simulation', s);
-    } catch {
-      /* persistance best-effort */
-    }
+  if (res.status === 404) {
+    throw new ErreurIntrouvable();
   }
 
-  private exiger(id: string): Signalement {
-    const s = this.store.get(id);
-    if (!s) throw new ErreurIntrouvable();
-    return s;
+  const contentType = res.headers.get('content-type') || '';
+  const data = contentType.includes('application/json') ? await res.json() : await res.text();
+
+  if (!res.ok) {
+    const message =
+      typeof data === 'object' && data && 'error' in data && typeof (data as { error: unknown }).error === 'string'
+        ? (data as { error: string }).error
+        : `Erreur serveur (${res.status})`;
+    throw new Error(message);
   }
 
+  return data as T;
+}
+
+export interface NioFarApi {
+  listerSignalements(filtres?: FiltresSignalements): Promise<SignalementPublic[]>;
+  obtenirSignalement(id: string): Promise<SignalementPublic | null>;
+  obtenirParCode(code: string): Promise<SignalementPublic | null>;
+  chercherSimilaires(categorie: Categorie, secteur: string): Promise<SignalementPublic[]>;
+  creerSignalement(donnees: NouveauSignalement): Promise<SignalementPublic>;
+  televerserAudio(id: string, audio: Blob, duree?: number): Promise<SignalementPublic>;
+  confirmerProbleme(id: string): Promise<SignalementPublic>;
+  repondreVerification(id: string, regle: boolean): Promise<SignalementPublic>;
+  indicateursPublics(): Promise<IndicateursPublics>;
+  chargerExemples(): Promise<number>;
+  retirerExemples(): Promise<void>;
+  urlOpenDataCsv(): string;
+  urlOpenDataJson(): string;
+
+  // Administration & Authentification
+  connexionAdmin(email: string, password: string): Promise<{ user: UtilisateurSession; csrfToken: string }>;
+  deconnexionAdmin(): Promise<void>;
+  sessionAdmin(): Promise<{ user: UtilisateurSession; csrfToken: string } | null>;
+  listerSignalementsAdmin(): Promise<SignalementAdmin[]>;
+  modifierStatutAdmin(
+    id: string,
+    payload: {
+      statut?: Statut;
+      note?: string;
+      acteurCompetent?: string | null;
+      verifieParRelais?: boolean;
+      photoApres?: string | null;
+      confirmationHabitant?: boolean | null;
+      transcriptionSuggeree?: string;
+      categorie?: Categorie;
+      validerSuggestion?: boolean;
+    },
+  ): Promise<SignalementAdmin>;
+  marquerDoublonAdmin(id: string, estDoublon: boolean, note?: string): Promise<SignalementAdmin>;
+  listerRelancesAdmin(): Promise<{
+    politique: string;
+    totalRelances: number;
+    j3Count: number;
+    j7Count: number;
+    items: SignalementAdmin[];
+  }>;
+  validerRelanceAdmin(id: string): Promise<SignalementAdmin>;
+}
+
+class ClientHttpNioFar implements NioFarApi {
   async listerSignalements(filtres: FiltresSignalements = {}): Promise<SignalementPublic[]> {
-    await this.reseau();
-    const secteur = filtres.secteur?.trim().toLowerCase();
-    return [...this.store.values()]
-      .filter((s) => !filtres.code || s.code === filtres.code)
-      .filter((s) => !secteur || s.secteur.toLowerCase().includes(secteur))
-      .filter((s) => !filtres.categories?.length || filtres.categories.includes(s.categorie))
-      .filter((s) => !filtres.statuts?.length || filtres.statuts.includes(s.statut))
-      .sort((a, b) => b.dateCreation.localeCompare(a.dateCreation))
-      .map(versPublic);
+    const params = new URLSearchParams();
+    if (filtres.code) params.set('code', filtres.code);
+    if (filtres.secteur) params.set('secteur', filtres.secteur);
+    if (filtres.categories?.length) params.set('categories', filtres.categories.join(','));
+    if (filtres.statuts?.length) params.set('statuts', filtres.statuts.join(','));
+    const q = params.toString();
+    return requete<SignalementPublic[]>(`/reports${q ? `?${q}` : ''}`);
   }
 
   async obtenirSignalement(id: string): Promise<SignalementPublic | null> {
-    await this.reseau();
-    const s = this.store.get(id);
-    return s ? versPublic(s) : null;
+    try {
+      return await requete<SignalementPublic>(`/reports/${encodeURIComponent(id)}`);
+    } catch (e) {
+      if (e instanceof ErreurIntrouvable) return null;
+      throw e;
+    }
   }
 
   async obtenirParCode(code: string): Promise<SignalementPublic | null> {
-    await this.reseau();
-    const s = [...this.store.values()].find((x) => x.code === code);
-    return s ? versPublic(s) : null;
+    try {
+      return await requete<SignalementPublic>(`/reports/track/${encodeURIComponent(code)}`);
+    } catch (e) {
+      if (e instanceof ErreurIntrouvable) return null;
+      throw e;
+    }
   }
 
   async chercherSimilaires(categorie: Categorie, secteur: string): Promise<SignalementPublic[]> {
-    await this.reseau();
-    return [...this.store.values()]
-      .filter((s) => s.categorie === categorie && s.secteur === secteur)
-      .filter((s) => !(s.statut === 'resolu' && s.confirmationHabitant !== false))
-      .sort((a, b) => priorite(b) - priorite(a))
-      .map(versPublic);
+    const params = new URLSearchParams({
+      categorie,
+      secteur,
+      similaires: '1',
+    });
+    return requete<SignalementPublic[]>(`/reports?${params.toString()}`);
   }
 
   async creerSignalement(d: NouveauSignalement): Promise<SignalementPublic> {
-    await this.reseau();
-    const existant = this.store.get(d.id);
-    if (existant) return versPublic(existant); // idempotence par UUID
-    let code = d.code;
-    while ([...this.store.values()].some((s) => s.code === code)) code = genererCodeSuivi();
-    const maintenant = new Date().toISOString();
-    const s: Signalement = {
-      ...d,
-      code,
-      statut: 'recu',
-      estDoublon: false,
-      confirmations: 0,
-      confirmationHabitant: null,
-      photoApres: null,
-      enAttenteEnvoi: false,
-      historique: [{ date: maintenant, statut: 'recu', note: 'Signalement reçu par NIO FAR.' }],
-    };
-    await this.sauver(s);
-    return versPublic(s);
+    return requete<SignalementPublic>('/reports', {
+      method: 'POST',
+      body: JSON.stringify(d),
+    });
+  }
+
+  async televerserAudio(id: string, audio: Blob, duree?: number): Promise<SignalementPublic> {
+    const form = new FormData();
+    form.append('audio', audio, 'note-vocale.webm');
+    if (duree !== undefined) form.append('duration', String(duree));
+    const res = await requete<{ report: SignalementPublic }>(`/reports/${encodeURIComponent(id)}/audio`, {
+      method: 'POST',
+      body: form,
+    });
+    return res.report;
   }
 
   async confirmerProbleme(id: string): Promise<SignalementPublic> {
-    await this.reseau();
-    const s = this.exiger(id);
-    const maj = { ...s, confirmations: s.confirmations + 1 };
-    await this.sauver(maj);
-    return versPublic(maj);
+    return requete<SignalementPublic>(`/reports/${encodeURIComponent(id)}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId: obtenirDeviceIdAnonyme() }),
+    });
   }
 
   async repondreVerification(id: string, regle: boolean): Promise<SignalementPublic> {
-    await this.reseau();
-    const s = this.exiger(id);
-    if (s.statut !== 'resolu') throw new Error('Ce signalement n’est pas marqué « Résolu ».');
-    const date = new Date().toISOString();
-    const maj: Signalement = regle
-      ? {
-          ...s,
-          confirmationHabitant: true,
-          historique: [...s.historique, { date, statut: 'resolu', note: 'Résolution confirmée par un habitant.' }],
-        }
-      : {
-          ...s,
-          statut: 'a_verifier',
-          confirmationHabitant: false,
-          historique: [
-            ...s.historique,
-            { date, statut: 'a_verifier', note: 'Un habitant signale que le problème est toujours là.' },
-          ],
-        };
-    await this.sauver(maj);
-    return versPublic(maj);
+    return requete<SignalementPublic>(`/reports/${encodeURIComponent(id)}/resolution-feedback`, {
+      method: 'POST',
+      body: JSON.stringify({ regle, verdict: regle ? 'regle' : 'toujours_la' }),
+    });
   }
 
   async indicateursPublics(): Promise<IndicateursPublics> {
-    await this.reseau();
-    const liste = [...this.store.values()];
-    const parStatut = Object.fromEntries(STATUTS.map((st) => [st, 0])) as Record<Statut, number>;
-    const parCategorie: Record<Categorie, number> = { dechets: 0, eau_stagnante: 0, eclairage: 0, voirie: 0 };
-    const delais: number[] = [];
-    let confirmations = 0;
-    let resolusConfirmes = 0;
-    let resolusContestes = 0;
-    for (const s of liste) {
-      parStatut[s.statut] += 1;
-      parCategorie[s.categorie] += 1;
-      confirmations += s.confirmations;
-      if (s.confirmationHabitant === true) resolusConfirmes += 1;
-      if (s.confirmationHabitant === false) resolusContestes += 1;
-      const fin = s.historique.find((h) => h.statut === 'resolu');
-      if (fin) delais.push((new Date(fin.date).getTime() - new Date(s.dateCreation).getTime()) / 86_400_000);
-    }
-    return {
-      total: liste.length,
-      parStatut,
-      parCategorie,
-      resolusConfirmes,
-      resolusContestes,
-      delaiMoyenResolutionJours: delais.length ? Math.round((delais.reduce((a, b) => a + b, 0) / delais.length) * 10) / 10 : null,
-      totalConfirmations: confirmations,
-      contientExemples: liste.some((s) => s.estExemple),
-    };
+    return requete<IndicateursPublics>('/public/stats');
   }
 
   async chargerExemples(): Promise<number> {
-    await this.reseau();
-    const exemples = creerExemplesFictifs();
-    for (const e of exemples) await this.sauver(e);
-    return exemples.length;
+    const r = await requete<{ ajoutes: number }>('/reports/examples', { method: 'POST' });
+    return r.ajoutes;
   }
 
   async retirerExemples(): Promise<void> {
-    await this.reseau();
-    for (const s of [...this.store.values()]) {
-      if (!s.estExemple) continue;
-      this.store.delete(s.id);
-      try {
-        await idbSupprimer('simulation', s.id);
-      } catch {
-        /* ignoré */
-      }
+    await requete('/reports/examples', { method: 'DELETE' });
+  }
+
+  urlOpenDataCsv(): string {
+    return `${API_BASE}/public/open-data.csv`;
+  }
+
+  urlOpenDataJson(): string {
+    return `${API_BASE}/public/open-data.json`;
+  }
+
+  async connexionAdmin(email: string, password: string): Promise<{ user: UtilisateurSession; csrfToken: string }> {
+    const r = await requete<{ user: UtilisateurSession; csrfToken: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    csrfMemoire = r.csrfToken;
+    return r;
+  }
+
+  async deconnexionAdmin(): Promise<void> {
+    await requete('/auth/logout', { method: 'POST' });
+    csrfMemoire = '';
+  }
+
+  async sessionAdmin(): Promise<{ user: UtilisateurSession; csrfToken: string } | null> {
+    try {
+      const r = await requete<{ user: UtilisateurSession; csrfToken: string }>('/auth/me');
+      csrfMemoire = r.csrfToken;
+      return r;
+    } catch {
+      return null;
     }
+  }
+
+  async listerSignalementsAdmin(): Promise<SignalementAdmin[]> {
+    return requete<SignalementAdmin[]>('/admin/reports');
+  }
+
+  async modifierStatutAdmin(
+    id: string,
+    payload: {
+      statut?: Statut;
+      note?: string;
+      acteurCompetent?: string | null;
+      verifieParRelais?: boolean;
+      photoApres?: string | null;
+      confirmationHabitant?: boolean | null;
+      transcriptionSuggeree?: string;
+      categorie?: Categorie;
+      validerSuggestion?: boolean;
+    },
+  ): Promise<SignalementAdmin> {
+    return requete<SignalementAdmin>(`/admin/reports/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async marquerDoublonAdmin(id: string, estDoublon: boolean, note?: string): Promise<SignalementAdmin> {
+    return requete<SignalementAdmin>(`/admin/reports/${encodeURIComponent(id)}/duplicate`, {
+      method: 'PATCH',
+      body: JSON.stringify({ estDoublon, note }),
+    });
+  }
+
+  async listerRelancesAdmin() {
+    return requete<{
+      politique: string;
+      totalRelances: number;
+      j3Count: number;
+      j7Count: number;
+      items: SignalementAdmin[];
+    }>('/admin/reminders');
+  }
+
+  async validerRelanceAdmin(id: string): Promise<SignalementAdmin> {
+    return requete<SignalementAdmin>(`/admin/reminders/${encodeURIComponent(id)}/validate`, {
+      method: 'POST',
+    });
   }
 }
 
-export const api: NioFarApi = new ServiceSimule();
+export const api: NioFarApi = new ClientHttpNioFar();

@@ -151,9 +151,8 @@ export function EnregistreurVocal({
           onClick={enCours ? arreter : demarrer}
           whileTap={{ scale: 0.92 }}
           aria-label={enCours ? 'Arrêter l’enregistrement' : etat.type === 'pret' ? 'Réenregistrer une note vocale' : 'Enregistrer une note vocale'}
-          className={`relative grid h-28 w-28 place-items-center rounded-full shadow-cta transition-colors ${
-            enCours ? 'bg-[#C8553D] text-white' : 'bg-ochre text-ink hover:bg-ochre-400'
-          }`}
+          className={`relative grid h-28 w-28 place-items-center rounded-full shadow-cta transition-colors ${enCours ? 'bg-[#C8553D] text-white' : 'bg-ochre text-ink hover:bg-ochre-400'
+            }`}
         >
           {enCours ? <Square size={38} fill="currentColor" aria-hidden /> : <Mic size={46} aria-hidden />}
         </motion.button>
