@@ -5,6 +5,7 @@ export type Statut = 'recu' | 'a_verifier' | 'transmis' | 'en_cours' | 'resolu';
 export type Gravite = 1 | 2 | 3;
 export type RoleUtilisateur = 'admin' | 'relais';
 export type RelanceNiveau = 'aucune' | 'j3' | 'j7';
+export type PayoutProviderType = 'wave' | 'orange_money';
 
 export type EntreeHistorique = {
   date: string; // ISO 8601
@@ -70,6 +71,8 @@ export type Signalement = {
   acteurCompetent?: string | null;
   acteurSuggere?: string;
   relanceNiveau?: RelanceNiveau;
+  pointsAttribues?: number;
+  estMalveillant?: boolean;
   dateCreation: string;
   dateMiseAJour?: string;
   historique: EntreeHistorique[];
@@ -83,6 +86,7 @@ export type SignalementPublic = Omit<Signalement, 'contact'>;
 
 /** Version complète réservée à l'administration. */
 export type SignalementAdmin = Signalement & {
+  citizenId?: string | null;
   relanceDate: string | null;
   relanceValideeAdmin: boolean;
   suggestion: SuggestionVocaleAdmin | null;
@@ -103,7 +107,9 @@ export type NouveauSignalement = Pick<
   | 'audio'
   | 'contact'
   | 'dateCreation'
->;
+> & {
+  citizenId?: string | null;
+};
 
 export type FiltresSignalements = {
   code?: string;
@@ -133,4 +139,151 @@ export type UtilisateurSession = {
   email: string;
   nom: string;
   role: RoleUtilisateur;
+};
+
+export type FacteurExplicable = {
+  code: 'densite' | 'recurrence' | 'saisonnalite' | 'meteo';
+  label: string;
+  poidsPourcent: number;
+  scoreBrutSur100: number;
+  contributionPoints: number;
+  explication: string;
+};
+
+export type ScoreRisqueCategorie = {
+  categorie: Categorie;
+  labelCategorie: string;
+  nbSignalementsCategorie: number;
+  nbRecurrentsOuActifs: number;
+  donneesSuffisantes: boolean;
+  statutDonnees: string;
+  messageGardeFou: string;
+  scoreRisque: number | null;
+  niveauRisque: 'donnees_insuffisantes' | 'faible' | 'modere' | 'eleve';
+  formuleExplicable: string;
+  facteurs: FacteurExplicable[];
+  actionSuggereeCommune: string;
+};
+
+export type PointNoirSecteur = {
+  secteur: string;
+  latitude: number;
+  longitude: number;
+  totalSignalementsSecteur: number;
+  seuilMinimalRequis: number;
+  donneesSuffisantes: boolean;
+  statutAffichage: string;
+  scoreGlobalSecteur: number | null;
+  niveauGlobal: 'donnees_insuffisantes' | 'faible' | 'modere' | 'eleve';
+  saisonnaliteMensuelle: { mois: number; labelMois: string; count: number; estHivernage: boolean }[];
+  parCategorie: ScoreRisqueCategorie[];
+};
+
+export type ElementAAnticiper = {
+  secteur: string;
+  categorie: Categorie;
+  labelCategorie: string;
+  scoreRisque: number;
+  niveauRisque: 'modere' | 'eleve';
+  prochainePluieDate: string | null;
+  prochainePluieMm: number | null;
+  justificationCourte: string;
+  actionRecommandee: string;
+  facteurs: FacteurExplicable[];
+};
+
+export type RapportPointsNoirs = {
+  mentionLegale: string;
+  methode: string;
+  seuilMinimalSecteur: number;
+  genereLe: string;
+  contientExemplesFictifs: boolean;
+  meteo: {
+    source: string;
+    zone: string;
+    latitude: number;
+    longitude: number;
+    horodatage: string;
+    cumul7JoursMm: number;
+    maxJourMm: number;
+    prochainePluieImportante: {
+      date: string;
+      precipitationMm: number;
+      probabiliteMax: number;
+      seuilMm: number;
+    } | null;
+    jours: { date: string; precipitationMm: number; probabiliteMax: number }[];
+    estRepliHorsLigne: boolean;
+  };
+  secteurs: PointNoirSecteur[];
+  aAnticiper: ElementAAnticiper[];
+};
+
+export type CompteCitoyen = {
+  id: string;
+  telephoneMasque: string;
+  secteur: string;
+  pointsBalance: number;
+  pointsGagnesAujourdHui: number;
+  plafondQuotidien: number;
+  pointsParSignalementVerifie: number;
+};
+
+export type EntreeLedgerPoints = {
+  id: string;
+  citizenId: string;
+  reportId: string | null;
+  secteur: string;
+  delta: number;
+  motif: 'verification_signalement' | 'retrait_doublon' | 'retrait_malveillant' | 'echange_recompense';
+  description: string;
+  createdBy: string;
+  createdAt: string;
+  telephoneMasque?: string;
+};
+
+export type ElementCatalogueRecompense = {
+  id: string;
+  titre: string;
+  description: string;
+  pointsRequis: number;
+  fournisseurPaiement: PayoutProviderType;
+  sponsorNom: string;
+  sponsorContact: string;
+  montantIndicatif: string;
+  actif: boolean;
+};
+
+export type ClassementQuartiers = {
+  politiqueConfidentialite: string;
+  regles: {
+    pointsParSignalementVerifie: number;
+    plafondQuotidienPoints: number;
+    penaliteMalveillant: number;
+    pointsDoublon: number;
+  };
+  quartiers: {
+    secteur: string;
+    pointsTotaux: number;
+    signalementsVerifies: number;
+    resolusVerifies: number;
+    confirmationsCitoyennes: number;
+    scoreCollectif: number;
+  }[];
+};
+
+export type ReponseScenarioDemo = {
+  step: number;
+  titre: string;
+  explication: string;
+  report: SignalementPublic | null;
+  hotspotsResume?: {
+    secteursActifs: number;
+    secteursInsuffisants: number;
+    aAnticiperCount: number;
+  };
+  topQuartier?: {
+    secteur: string;
+    scoreCollectif: number;
+  } | null;
 };

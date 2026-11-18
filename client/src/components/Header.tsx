@@ -8,6 +8,7 @@ import { ThemeToggle } from './ThemeToggle';
 const links = [
   { to: '/signalements', label: 'Carte & liste' },
   { to: '/suivre', label: 'Suivre un code' },
+  { to: '/points', label: 'Quartiers & Points' },
   { to: '/transparence', label: 'Transparence' },
   { to: '/admin', label: 'Admin' },
 ];
@@ -42,9 +43,8 @@ export function Header() {
         Aller au contenu
       </a>
       <div
-        className={`glass relative mx-auto max-w-6xl overflow-hidden rounded-2xl transition-shadow duration-300 ${
-          scrolled ? 'shadow-soft' : ''
-        }`}
+        className={`glass relative mx-auto max-w-6xl overflow-hidden rounded-2xl transition-shadow duration-300 ${scrolled ? 'shadow-soft' : ''
+          }`}
       >
         <nav aria-label="Navigation principale" className="flex items-center justify-between gap-2 px-3 py-1.5 sm:px-4">
           <Link to="/" className="flex min-h-11 items-center rounded-xl pr-2" aria-label="NIO FAR — accueil">

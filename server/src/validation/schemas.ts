@@ -28,6 +28,8 @@ export const createReportSchema = z.object({
   photo: z.string().max(2_500_000).nullable().optional(),
   audio: z.string().max(3_500_000).nullable().optional(),
   contact: contactSchema,
+  citizenId: z.string().uuid().nullable().optional(),
+  estExemple: z.boolean().optional(),
   enAttenteEnvoi: z.boolean().optional().default(false),
   dateCreation: z.string().datetime().optional(),
   langueIndice: z.enum(['fr', 'wo', 'inconnue']).optional().default('fr'),
@@ -62,10 +64,38 @@ export const adminStatusPatchSchema = z.object({
   transcriptionSuggeree: z.string().max(1500).optional(),
   categorie: categorieSchema.optional(),
   validerSuggestion: z.boolean().optional(),
+  estMalveillant: z.boolean().optional(),
 });
 
 export const adminDuplicatePatchSchema = z.object({
   estDoublon: z.boolean(),
   doublonDeId: z.string().uuid().nullable().optional(),
   note: z.string().trim().max(400).optional(),
+});
+
+export const citizenOtpRequestSchema = z.object({
+  telephone: z.string().trim().min(7).max(30),
+  secteur: z.string().trim().min(2).max(80).optional().default('Pikine'),
+});
+
+export const citizenOtpVerifySchema = z.object({
+  telephone: z.string().trim().min(7).max(30),
+  code: z.string().trim().regex(/^\d{6}$/, 'Le code OTP doit contenir 6 chiffres.'),
+  secteur: z.string().trim().min(2).max(80).optional(),
+});
+
+export const citizenRedeemSchema = z.object({
+  citizenId: z.string().uuid(),
+  rewardId: z.string().uuid(),
+});
+
+export const rewardItemSchema = z.object({
+  titre: z.string().trim().min(3).max(160),
+  description: z.string().trim().max(500).optional().default(''),
+  pointsRequis: z.number().int().min(10).max(10000),
+  fournisseurPaiement: z.enum(['wave', 'orange_money']).optional().default('wave'),
+  sponsorNom: z.string().trim().max(160).optional().default(''),
+  sponsorContact: z.string().trim().max(160).optional().default(''),
+  montantIndicatif: z.string().trim().max(80).optional().default(''),
+  actif: z.boolean().optional().default(true),
 });

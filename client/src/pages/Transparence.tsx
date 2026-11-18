@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   BarChart,
@@ -17,18 +18,22 @@ import {
   Box,
   CheckCircle2,
   Clock,
+  CloudRain,
   Download,
   FileJson,
   FileSpreadsheet,
   FlaskConical,
+  HelpCircle,
+  ShieldAlert,
   ShieldCheck,
   Trash2,
+  Trophy,
   Users,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { categoryColors } from '../lib/tokens';
 import { STATUTS, categorieLabels, statutInfos } from '../lib/referentiel';
-import type { Categorie } from '../lib/types';
+import type { Categorie, RapportPointsNoirs } from '../lib/types';
 import { hasWebGL, prefersSaveData, usePrefersReducedMotion } from '../lib/device';
 import { useTheme } from '../lib/theme';
 import { useChargement, useTitre } from '../lib/hooks';
@@ -76,6 +81,21 @@ export default function Transparence() {
   const [actionEx, setActionEx] = useState(false);
 
   const { etat, recharger } = useChargement(() => api.indicateursPublics(), []);
+  const [hotspots, setHotspots] = useState<RapportPointsNoirs | null>(null);
+  const [pourquoiCle, setPourquoiCle] = useState<string | null>(null);
+
+  useEffect(() => {
+    void api.pointsNoirsPublics().then(setHotspots).catch(() => {});
+  }, [etat]);
+
+  useEffect(() => {
+    const onDemo = () => {
+      recharger();
+      void api.pointsNoirsPublics().then(setHotspots).catch(() => {});
+    };
+    window.addEventListener('niofar:demo-update', onDemo);
+    return () => window.removeEventListener('niofar:demo-update', onDemo);
+  }, [recharger]);
 
   const basculerExemples = async (charger: boolean) => {
     setActionEx(true);
@@ -92,31 +112,31 @@ export default function Transparence() {
 
   const donneesCategories = d
     ? (Object.keys(categorieLabels) as Categorie[]).map((cat) => ({
-        id: cat,
-        nom: categorieLabels[cat],
-        valeur: d.parCategorie[cat] ?? 0,
-        couleur: categoryColors[cat],
-      }))
+      id: cat,
+      nom: categorieLabels[cat],
+      valeur: d.parCategorie[cat] ?? 0,
+      couleur: categoryColors[cat],
+    }))
     : [];
 
   const donneesStatuts = d
     ? STATUTS.map((st) => ({
-        id: st,
-        nom: statutInfos[st].label,
-        valeur: d.parStatut[st] ?? 0,
-        couleur: statutInfos[st].couleur,
-      }))
+      id: st,
+      nom: statutInfos[st].label,
+      valeur: d.parStatut[st] ?? 0,
+      couleur: statutInfos[st].couleur,
+    }))
     : [];
 
   const donneesSecteurs: SectorDatum[] = d
     ? Object.entries(d.parSecteur)
-        .map(([secteur, v]) => ({
-          secteur,
-          total: v.total,
-          resolus: v.resolus,
-          aTraiter: v.aTraiter,
-        }))
-        .sort((a, b) => b.total - a.total)
+      .map(([secteur, v]) => ({
+        secteur,
+        total: v.total,
+        resolus: v.resolus,
+        aTraiter: v.aTraiter,
+      }))
+      .sort((a, b) => b.total - a.total)
     : [];
 
   return (
@@ -245,18 +265,16 @@ export default function Transparence() {
                   <button
                     type="button"
                     onClick={() => setMode3D(true)}
-                    className={`inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-xs font-bold transition-colors ${
-                      mode3D ? 'bg-accent text-accent-fg' : 'text-fg-muted hover:text-fg'
-                    }`}
+                    className={`inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-xs font-bold transition-colors ${mode3D ? 'bg-accent text-accent-fg' : 'text-fg-muted hover:text-fg'
+                      }`}
                   >
                     <Box size={15} aria-hidden /> Barres 3D
                   </button>
                   <button
                     type="button"
                     onClick={() => setMode3D(false)}
-                    className={`inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-xs font-bold transition-colors ${
-                      !mode3D ? 'bg-accent text-accent-fg' : 'text-fg-muted hover:text-fg'
-                    }`}
+                    className={`inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-xs font-bold transition-colors ${!mode3D ? 'bg-accent text-accent-fg' : 'text-fg-muted hover:text-fg'
+                      }`}
                   >
                     <BarChart3 size={15} aria-hidden /> Repli 2D
                   </button>
@@ -341,6 +359,86 @@ export default function Transparence() {
               </div>
             </div>
           </div>
+
+          {/* 3b. Synthèse publique « Points noirs » (Urbanisme prédictif explicable) */}
+          {hotspots && (
+            <div className="glass rounded-4xl border-2 border-accent/30 p-6 shadow-soft sm:p-8">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-xs font-extrabold text-accent-fg">
+                      <ShieldAlert size={14} aria-hidden /> Indicatif, basé sur les données de NIO FAR
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#2F8FBF]/15 px-3 py-1 text-xs font-bold text-[#2F8FBF]">
+                      <CloudRain size={14} aria-hidden /> Open-Meteo Dakar : {hotspots.meteo.cumul7JoursMm} mm (7 j)
+                    </span>
+                  </div>
+                  <h2 className="mt-3 text-2xl font-extrabold">
+                    Urbanisme prédictif — Carte &amp; Secteurs « Points noirs »
+                  </h2>
+                  <p className="mt-1 text-sm text-fg-muted">
+                    Croisement explicable entre densité de signalements (35 %), récurrence (30 %), saisonnalité
+                    mensuelle (20 %) et prévisions de pluie Open-Meteo (15 %). Garde-fou strict : moins de{' '}
+                    {hotspots.seuilMinimalSecteur} signalements = « Données insuffisantes ».
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Link to="/points" className={`${btn.base} ${btn.secondary} text-xs`}>
+                    <Trophy size={15} aria-hidden /> Classement des quartiers
+                  </Link>
+                  <Link to="/admin" className={`${btn.base} ${btn.accent} text-xs`}>
+                    Carte de chaleur &amp; Export PDF communes
+                  </Link>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {hotspots.secteurs.slice(0, 5).map((sec) => {
+                  const cle = sec.secteur;
+                  const topCat = sec.parCategorie[0];
+                  const ouvert = pourquoiCle === cle;
+                  return (
+                    <div
+                      key={sec.secteur}
+                      className="flex flex-col justify-between rounded-3xl border border-line bg-bg-elev p-4 text-xs"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-sm font-extrabold">{sec.secteur}</span>
+                          <span className="font-mono text-[11px] text-fg-muted">
+                            {sec.totalSignalementsSecteur}/{sec.seuilMinimalRequis}
+                          </span>
+                        </div>
+                        {sec.donneesSuffisantes ? (
+                          <div className="mt-2">
+                            <span className="inline-block rounded-full bg-[#C8553D] px-2.5 py-0.5 font-mono text-xs font-extrabold text-white">
+                              Risque indicatif {sec.scoreGlobalSecteur}/100
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setPourquoiCle(ouvert ? null : cle)}
+                              className="mt-2 inline-flex items-center gap-1 font-bold text-accent hover:underline"
+                            >
+                              <HelpCircle size={13} aria-hidden /> Pourquoi ?
+                            </button>
+                            {ouvert && topCat && (
+                              <div className="mt-2 rounded-2xl border border-line bg-bg p-2.5 text-[11px]">
+                                <p className="font-mono font-bold text-accent">{topCat.formuleExplicable}</p>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="mt-2 rounded-xl bg-fg/10 px-2.5 py-1.5 font-bold text-fg-muted">
+                            Données insuffisantes (&lt; 30 signalements)
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* 4. Téléchargement Open Data (CSV & JSON) */}
           <div className="glass rounded-4xl border-2 border-accent/30 p-6 shadow-soft sm:p-8">

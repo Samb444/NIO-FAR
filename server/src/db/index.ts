@@ -18,7 +18,6 @@ let initPromise: Promise<Database> | null = null;
 let rawExecutor: ((sql: string) => Promise<void>) | null = null;
 
 async function connectDatabase(): Promise<Database> {
-  // Mode test unitaire : base PostgreSQL PGlite en mémoire isolée et rapide
   if (process.env.NODE_ENV === 'test' || config.databaseUrl.startsWith('pglite://memory')) {
     const client = new PGlite();
     await client.waitReady;
@@ -30,7 +29,6 @@ async function connectDatabase(): Promise<Database> {
     return drizzlePglite(client, { schema });
   }
 
-  // Tentative de connexion à PostgreSQL externe (Docker ou Cloud)
   if (!config.databaseUrl.startsWith('pglite://')) {
     try {
       const pool = new pg.Pool({
@@ -49,7 +47,6 @@ async function connectDatabase(): Promise<Database> {
       if (!config.pgliteFallback) {
         throw err;
       }
-      // Repli transparent sur PostgreSQL embarqué (PGlite sur disque) si Docker n'est pas lancé
     }
   }
 
@@ -79,7 +76,7 @@ export async function resetDbForTests(): Promise<void> {
   await getDb();
   if (rawExecutor) {
     await rawExecutor(
-      'TRUNCATE TABLE "transcription_jobs", "report_suggestions", "report_confirmations", "reports", "users" CASCADE;',
+      'TRUNCATE TABLE "payout_requests", "rewards_catalog", "points_ledger", "citizen_otps", "citizens", "transcription_jobs", "report_suggestions", "report_confirmations", "reports", "users" CASCADE;',
     );
   }
 }

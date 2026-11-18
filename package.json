@@ -1,7 +1,7 @@
 {
   "name": "nio-far",
   "private": true,
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "NIO FAR — plateforme citoyenne de suivi des problèmes de proximité en banlieue de Dakar.",
   "workspaces": [
     "client",
@@ -14,7 +14,12 @@
     "build": "npm run build -w client && npm run build -w server",
     "preview": "npm run preview -w client --",
     "test": "npm run test -w server",
+    "test:e2e": "playwright test",
     "seed": "npm run seed -w server",
     "db:migrate": "npm run db:migrate -w server"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.1",
+    "@playwright/test": "^1.51.0"
   }
 }

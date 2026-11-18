@@ -19,7 +19,7 @@ async function loginAs(email: string, password: string) {
   return { cookies, csrfToken, user: res.body.user };
 }
 
-describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métier', () => {
+describe('NIO FAR — API Publique, Administration, Prédiction, Points Citoyens et Règles Métier', () => {
   beforeEach(async () => {
     await resetDbForTests();
     await seedUtilisateursDemo();
@@ -41,11 +41,9 @@ describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métie
     const res1 = await request(app).post('/api/reports').send(payload);
     expect(res1.status).toBe(201);
     expect(res1.body.id).toBe(payload.id);
-    // Coordonnées arrondies à 3 décimales
     expect(res1.body.latitude).toBe(14.755);
     expect(res1.body.longitude).toBe(-17.391);
 
-    // Second envoi avec le même UUID client (ex. resynchronisation hors-ligne)
     const res2 = await request(app).post('/api/reports').send({
       ...payload,
       description: 'Doublon réseau hors-ligne',
@@ -78,13 +76,11 @@ describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métie
     expect(creation.body.audio).toBeNull();
     expect(creation.body.hasAudio).toBe(true);
 
-    // Lecture publique GET /api/reports/:id
     const detail = await request(app).get(`/api/reports/${creation.body.id}`);
     expect(detail.status).toBe(200);
     expect(detail.body.contact).toBeUndefined();
     expect(detail.body.audio).toBeNull();
 
-    // Open Data JSON : ni contact, ni audio, ni photo, ni description libre
     const openJson = await request(app).get('/api/public/open-data.json');
     expect(openJson.status).toBe(200);
     expect(openJson.body.signalements).toHaveLength(1);
@@ -96,7 +92,6 @@ describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métie
     expect(JSON.stringify(openJson.body)).not.toContain('77 999 88 77');
     expect(JSON.stringify(openJson.body)).not.toContain('Amadou Diop');
 
-    // Open Data CSV : ni contact, ni audio, ni description libre
     const openCsv = await request(app).get('/api/public/open-data.csv');
     expect(openCsv.status).toBe(200);
     expect(openCsv.text).not.toContain('77 999 88 77');
@@ -105,17 +100,16 @@ describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métie
   });
 
   it('3. calcule le score de priorisation transparente selon la formule exacte', async () => {
-    // Formule : gravité × 2 + signalements similaires + confirmations + 1 point par tranche de 3 jours
     const maintenant = new Date('2026-11-16T12:00:00Z');
     const ilYA9Jours = new Date(maintenant.getTime() - 9 * 86_400_000);
 
     const detail = calculerPrioriteTransparente(
       {
-        gravite: 3, // 3 * 2 = 6 pts
-        confirmations: 4, // 4 pts
-        dateCreation: ilYA9Jours, // 9 jours -> 3 tranches de 3 jours = 3 pts
+        gravite: 3,
+        confirmations: 4,
+        dateCreation: ilYA9Jours,
       },
-      2, // 2 signalements similaires = 2 pts
+      2,
       maintenant,
     );
 
@@ -137,16 +131,13 @@ describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métie
     });
     const reportId = cree.body.id as string;
 
-    // Sans authentification -> 401
     const nonAuth = await request(app)
       .patch(`/api/admin/reports/${reportId}/status`)
       .send({ statut: 'transmis' });
     expect(nonAuth.status).toBe(401);
 
-    // Connexion en tant que relais
     const relais = await loginAs(config.seedRelaisEmail, config.seedRelaisPassword);
 
-    // Le relais ne peut PAS passer un signalement à « transmis » -> 403
     const relaisInterdit = await request(app)
       .patch(`/api/admin/reports/${reportId}/status`)
       .set('Cookie', relais.cookies)
@@ -154,7 +145,6 @@ describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métie
       .send({ statut: 'transmis' });
     expect(relaisInterdit.status).toBe(403);
 
-    // Le relais PEUT marquer « vérifié sur place » et ajouter une note -> 200
     const relaisAutorise = await request(app)
       .patch(`/api/admin/reports/${reportId}/status`)
       .set('Cookie', relais.cookies)
@@ -177,7 +167,6 @@ describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métie
 
     const admin = await loginAs(config.seedAdminEmail, config.seedAdminPassword);
 
-    // Tentative de passer à « resolu » sans photoApres ni confirmationHabitant -> 400
     const refus = await request(app)
       .patch(`/api/admin/reports/${reportId}/status`)
       .set('Cookie', admin.cookies)
@@ -186,7 +175,6 @@ describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métie
     expect(refus.status).toBe(400);
     expect(refus.body.error).toMatch(/photo « après »|confirmation de l’habitant/i);
 
-    // Avec une photo « après » -> 200
     const accepte = await request(app)
       .patch(`/api/admin/reports/${reportId}/status`)
       .set('Cookie', admin.cookies)
@@ -199,7 +187,6 @@ describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métie
     expect(accepte.status).toBe(200);
     expect(accepte.body.statut).toBe('resolu');
 
-    // Si l'habitant répond « toujours là », le statut repasse à « a_verifier » avec historique
     const contestation = await request(app)
       .post(`/api/reports/${reportId}/resolution-feedback`)
       .send({ verdict: 'toujours_la' });
@@ -256,11 +243,100 @@ describe('NIO FAR — API Publique, Administration, Sécurité et Règles Métie
     expect(remRes.body.j3Count).toBe(1);
     expect(remRes.body.j7Count).toBe(1);
 
-    // Vérifier qu'aucune relance n'est marquée validée sans action de l'admin
     const [r7] = await db
       .select()
       .from(reports)
       .where(eq(reports.id, '55555555-2222-4333-8444-555555555557'));
     expect(r7.relanceValideeAdmin).toBe(false);
+  });
+
+  it('7. module « Points noirs » : applique le garde-fou < 30 signalements (« Données insuffisantes ») et explique chaque score', async () => {
+    // Base vide -> tous les secteurs ont < 30 signalements -> Données insuffisantes
+    const resVide = await request(app).get('/api/public/hotspots');
+    expect(resVide.status).toBe(200);
+    expect(resVide.body.mentionLegale).toContain('Indicatif, basé sur les données de NIO FAR');
+    const pikineVide = resVide.body.secteurs.find((s: { secteur: string }) => s.secteur === 'Pikine');
+    expect(pikineVide.donneesSuffisantes).toBe(false);
+    expect(pikineVide.statutAffichage).toContain('Données insuffisantes');
+    expect(pikineVide.scoreGlobalSecteur).toBeNull();
+
+    // Chargement des exemples fictifs (Pikine >= 30, Guédiawaye >= 30, Keur Massar < 30)
+    await request(app).post('/api/reports/examples');
+    const resCharge = await request(app).get('/api/public/hotspots');
+    expect(resCharge.status).toBe(200);
+
+    const pikine = resCharge.body.secteurs.find((s: { secteur: string }) => s.secteur === 'Pikine');
+    expect(pikine.donneesSuffisantes).toBe(true);
+    expect(pikine.totalSignalementsSecteur).toBeGreaterThanOrEqual(30);
+    expect(typeof pikine.scoreGlobalSecteur).toBe('number');
+    expect(pikine.parCategorie[0].facteurs).toHaveLength(4);
+
+    const keurMassar = resCharge.body.secteurs.find((s: { secteur: string }) => s.secteur === 'Keur Massar');
+    expect(keurMassar.donneesSuffisantes).toBe(false);
+    expect(keurMassar.statutAffichage).toContain('Données insuffisantes');
+  });
+
+  it('8. points citoyens : OTP facultatif, crédit seulement après vérification, 0 pour doublon, retrait malveillant et PayoutProvider en mode simulation', async () => {
+    // 1. Demande OTP + Vérification
+    const otpReq = await request(app)
+      .post('/api/citizen/otp/request')
+      .send({ telephone: '+221 77 123 45 67', secteur: 'Pikine' });
+    expect(otpReq.status).toBe(200);
+    expect(otpReq.body.codeOtpDemo).toMatch(/^\d{6}$/);
+
+    const otpVer = await request(app).post('/api/citizen/otp/verify').send({
+      telephone: '+221 77 123 45 67',
+      code: otpReq.body.codeOtpDemo,
+      secteur: 'Pikine',
+    });
+    expect(otpVer.status).toBe(200);
+    const citizenId = otpVer.body.citizen.id as string;
+    expect(otpVer.body.citizen.pointsBalance).toBe(0);
+
+    // 2. Signalement créé avec citizenId -> 0 point avant vérification
+    const sig1 = await request(app).post('/api/reports').send({
+      id: '77777777-2222-4333-8444-555555555501',
+      categorie: 'dechets',
+      description: 'Dépôt sauvage à Pikine',
+      secteur: 'Pikine',
+      gravite: 2,
+      citizenId,
+    });
+    expect(sig1.status).toBe(201);
+    expect(sig1.body.pointsAttribues).toBe(0);
+
+    // 3. Vérification par l'admin -> +10 points citoyens dans le ledger
+    const admin = await loginAs(config.seedAdminEmail, config.seedAdminPassword);
+    const verif1 = await request(app)
+      .patch(`/api/admin/reports/${sig1.body.id}/status`)
+      .set('Cookie', admin.cookies)
+      .set('X-CSRF-Token', admin.csrfToken)
+      .send({ verifieParRelais: true, statut: 'transmis' });
+    expect(verif1.status).toBe(200);
+    expect(verif1.body.pointsAttribues).toBe(10);
+
+    // 4. Marquage doublon -> retrait des 10 points (0 point pour les doublons)
+    const dup1 = await request(app)
+      .patch(`/api/admin/reports/${sig1.body.id}/duplicate`)
+      .set('Cookie', admin.cookies)
+      .set('X-CSRF-Token', admin.csrfToken)
+      .send({ estDoublon: true });
+    expect(dup1.status).toBe(200);
+    expect(dup1.body.pointsAttribues).toBe(0);
+
+    const profApresDup = await request(app).get(`/api/citizen/${citizenId}/profile`);
+    expect(profApresDup.body.citizen.pointsBalance).toBe(0);
+
+    // 5. Classement public par quartier (jamais d'individu exposé)
+    const lb = await request(app).get('/api/public/leaderboard');
+    expect(lb.status).toBe(200);
+    expect(lb.body.politiqueConfidentialite).toContain('uniquement par quartier');
+
+    // 6. Catalogue de récompenses : mention « Récompenses en cours de lancement » et sponsors vides
+    const cat = await request(app).get('/api/public/rewards');
+    expect(cat.status).toBe(200);
+    expect(cat.body.mention).toBe('Récompenses en cours de lancement');
+    expect(cat.body.modePaiement).toBe('SIMULATION');
+    expect(cat.body.items[0].sponsorNom).toBe('');
   });
 });

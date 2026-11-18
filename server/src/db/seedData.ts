@@ -6,6 +6,7 @@ import { getDb, type Database } from './index.js';
 import {
   reports,
   reportSuggestions,
+  rewardsCatalog,
   users,
   type CategorieDB,
   type EntreeHistoriqueDB,
@@ -28,7 +29,7 @@ const LABELS_CAT: Record<CategorieDB, string> = {
   voirie: 'Voirie',
 };
 
-function illustrationSvg(categorie: CategorieDB, apres: boolean): string {
+export function illustrationSvg(categorie: CategorieDB, apres: boolean): string {
   const c = apres ? '#0B6B4F' : COULEURS_CAT[categorie];
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320">
 <rect width="480" height="320" fill="#F6F1E7"/>
@@ -46,18 +47,18 @@ ${
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-/** Génère un court WAV silencieux/bip de démonstration (2 secondes) en data URL pour tester l'écoute admin. */
-function genererAudioWavDemo(): string {
+/** Génère un court WAV silencieux/bip de démonstration (1 seconde) en data URL pour tester l'écoute admin. */
+export function genererAudioWavDemo(): string {
   const sampleRate = 8000;
-  const numSamples = sampleRate * 1; // 1 seconde
+  const numSamples = sampleRate * 1;
   const buffer = Buffer.alloc(44 + numSamples * 2);
   buffer.write('RIFF', 0);
   buffer.writeUInt32LE(36 + numSamples * 2, 4);
   buffer.write('WAVE', 8);
   buffer.write('fmt ', 12);
   buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20); // PCM
-  buffer.writeUInt16LE(1, 22); // Mono
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
   buffer.writeUInt32LE(sampleRate, 24);
   buffer.writeUInt32LE(sampleRate * 2, 28);
   buffer.writeUInt16LE(2, 32);
@@ -97,7 +98,7 @@ type ModeleExemple = {
   motsCles?: string[];
 };
 
-const MODELES_EXEMPLES: ModeleExemple[] = [
+const MODELES_EXEMPLES_PRINCIPAUX: ModeleExemple[] = [
   {
     id: '00000000-0000-4000-8000-000000000001',
     code: 'NF-EX2A4',
@@ -119,7 +120,8 @@ const MODELES_EXEMPLES: ModeleExemple[] = [
     verifieParRelais: true,
     avecAudio: true,
     relanceNiveau: 'j7',
-    transcriptionSuggeree: 'Il y a un grand tas d’ordures et de sachets plastiques devant le marché de Pikine depuis plus d’une semaine.',
+    transcriptionSuggeree:
+      'Il y a un grand tas d’ordures et de sachets plastiques devant le marché de Pikine depuis plus d’une semaine.',
     motsCles: ['ordures', 'sachets', 'plastique', 'tas'],
   },
   {
@@ -278,6 +280,148 @@ const MODELES_EXEMPLES: ModeleExemple[] = [
   },
 ];
 
+/**
+ * Génère des exemples historiques saisonniers étiquetés « Exemple fictif » pour Pikine (30+) et Guédiawaye (30+)
+ * afin que le module « Points noirs » puisse démontrer à la fois :
+ * - le calcul prédictif explicable sur Pikine et Guédiawaye (>= 30 signalements),
+ * - le garde-fou « Données insuffisantes » sur les autres secteurs (< 30 signalements).
+ */
+function construireExemplesHistoriquesSaisonniers(): ModeleExemple[] {
+  const liste: ModeleExemple[] = [];
+
+  // 30 exemples historiques supplémentaires pour Pikine (total Pikine = 32 >= 30)
+  for (let i = 1; i <= 30; i++) {
+    const idxStr = String(i).padStart(2, '0');
+    const categorie: CategorieDB =
+      i <= 14 ? 'dechets' : i <= 24 ? 'eau_stagnante' : i <= 27 ? 'voirie' : 'eclairage';
+    const ilYAJours = 15 + ((i * 9) % 240);
+    const estResolu = i % 3 === 0;
+    const gravite: 1 | 2 | 3 = i % 2 === 0 ? 3 : 2;
+    const dLat = ((i % 7) - 3) * 0.002;
+    const dLng = ((i % 5) - 2) * 0.002;
+
+    liste.push({
+      id: `00000000-0000-4000-8000-0000000001${idxStr}`,
+      code: `NF-PKN${idxStr}`,
+      categorie,
+      description:
+        categorie === 'dechets'
+          ? `Exemple fictif (historique saisonnier #${i}) : amas récurrent de déchets ménagers près du canal d’évacuation à Pikine.`
+          : categorie === 'eau_stagnante'
+            ? `Exemple fictif (historique saisonnier #${i}) : stagnation d’eau pluviale dans un point bas de Pikine.`
+            : `Exemple fictif (historique saisonnier #${i}) : dégradation signalée dans le secteur de Pikine.`,
+      secteur: 'Pikine',
+      lat: Math.round((14.755 + dLat) * 1000) / 1000,
+      lng: Math.round((-17.39 + dLng) * 1000) / 1000,
+      gravite,
+      ilYAJours,
+      derniereMajJours: Math.max(1, ilYAJours - 4),
+      etapes: estResolu
+        ? [
+            ['recu', ilYAJours, 'Signalement reçu (exemple fictif historique).'],
+            ['a_verifier', Math.max(2, ilYAJours - 2), 'Vérifié par un relais du quartier.'],
+            ['resolu', Math.max(1, ilYAJours - 5), 'Résolu après intervention (exemple fictif).'],
+          ]
+        : [
+            ['recu', ilYAJours, 'Signalement reçu (exemple fictif historique).'],
+            ['transmis', Math.max(1, ilYAJours - 2), 'Transmis pour anticipation pré-hivernage (exemple fictif).'],
+          ],
+      confirmations: (i % 6) + 2,
+      confirmationHabitant: estResolu ? true : null,
+      verifieParRelais: true,
+      photoApres: estResolu,
+      motsCles: categorie === 'dechets' ? ['déchets', 'ordures'] : ['eau', 'caniveau'],
+    });
+  }
+
+  // 30 exemples historiques supplémentaires pour Guédiawaye (total Guédiawaye = 31 >= 30)
+  for (let i = 1; i <= 30; i++) {
+    const idxStr = String(i).padStart(2, '0');
+    const categorie: CategorieDB =
+      i <= 16 ? 'eau_stagnante' : i <= 25 ? 'dechets' : i <= 28 ? 'voirie' : 'eclairage';
+    const ilYAJours = 12 + ((i * 11) % 250);
+    const estResolu = i % 4 === 0;
+    const gravite: 1 | 2 | 3 = i % 3 === 0 ? 2 : 3;
+    const dLat = ((i % 6) - 3) * 0.002;
+    const dLng = ((i % 5) - 2) * 0.002;
+
+    liste.push({
+      id: `00000000-0000-4000-8000-0000000002${idxStr}`,
+      code: `NF-GDW${idxStr}`,
+      categorie,
+      description:
+        categorie === 'eau_stagnante'
+          ? `Exemple fictif (historique saisonnier #${i}) : cuvette d’inondation récurrente et caniveau obstrué à Guédiawaye.`
+          : categorie === 'dechets'
+            ? `Exemple fictif (historique saisonnier #${i}) : dépôt sauvage risquant de boucher le drainage pluvial à Guédiawaye.`
+            : `Exemple fictif (historique saisonnier #${i}) : anomalie de proximité à Guédiawaye.`,
+      secteur: 'Guédiawaye',
+      lat: Math.round((14.776 + dLat) * 1000) / 1000,
+      lng: Math.round((-17.394 + dLng) * 1000) / 1000,
+      gravite,
+      ilYAJours,
+      derniereMajJours: Math.max(1, ilYAJours - 3),
+      etapes: estResolu
+        ? [
+            ['recu', ilYAJours, 'Signalement reçu (exemple fictif historique).'],
+            ['a_verifier', Math.max(2, ilYAJours - 1), 'Vérifié sur le terrain.'],
+            ['resolu', Math.max(1, ilYAJours - 4), 'Curage réalisé et confirmé (exemple fictif).'],
+          ]
+        : [
+            ['recu', ilYAJours, 'Signalement reçu (exemple fictif historique).'],
+            ['a_verifier', Math.max(1, ilYAJours - 2), 'Point récurrent à surveiller avant les pluies (exemple fictif).'],
+          ],
+      confirmations: (i % 7) + 2,
+      confirmationHabitant: estResolu ? true : null,
+      verifieParRelais: true,
+      photoApres: estResolu,
+      motsCles: categorie === 'eau_stagnante' ? ['eau', 'inondation', 'caniveau'] : ['déchets', 'bac'],
+    });
+  }
+
+  return liste;
+}
+
+const MODELES_EXEMPLES: ModeleExemple[] = [
+  ...MODELES_EXEMPLES_PRINCIPAUX,
+  ...construireExemplesHistoriquesSaisonniers(),
+];
+
+export async function seedCatalogueRecompensesParDefaut(db?: Database): Promise<void> {
+  const database = db || (await getDb());
+  const existants = await database.select({ id: rewardsCatalog.id }).from(rewardsCatalog);
+  if (existants.length > 0) return;
+
+  // Contrainte stricte d'honnêteté : aucun partenaire, aucun sponsor RSE, aucun montant financier inventé.
+  // Les champs sponsorNom, sponsorContact et montantIndicatif sont des chaînes vides à remplir par l'administrateur.
+  await database.insert(rewardsCatalog).values([
+    {
+      id: '30000000-0000-4000-8000-000000000001',
+      titre: 'Bon citoyen de quartier — Niveau 1 (Mode simulation)',
+      description:
+        'Récompense citoyenne en cours de lancement. Aucun partenaire ni montant configuré par défaut : entrées sponsors vides à compléter par l’administrateur.',
+      pointsRequis: 30,
+      fournisseurPaiement: 'wave',
+      sponsorNom: '',
+      sponsorContact: '',
+      montantIndicatif: '',
+      actif: true,
+    },
+    {
+      id: '30000000-0000-4000-8000-000000000002',
+      titre: 'Bon citoyen de quartier — Niveau 2 (Mode simulation)',
+      description:
+        'Récompense citoyenne en cours de lancement (simulation Orange Money). Entrées sponsor RSE et montant laissées vides.',
+      pointsRequis: 60,
+      fournisseurPaiement: 'orange_money',
+      sponsorNom: '',
+      sponsorContact: '',
+      montantIndicatif: '',
+      actif: true,
+    },
+  ]);
+}
+
 export async function seedUtilisateursDemo(db?: Database): Promise<void> {
   const database = db || (await getDb());
 
@@ -304,6 +448,8 @@ export async function seedUtilisateursDemo(db?: Database): Promise<void> {
       role: 'relais',
     });
   }
+
+  await seedCatalogueRecompensesParDefaut(database);
 }
 
 export async function chargerExemplesFictifsEnBase(db?: Database): Promise<number> {

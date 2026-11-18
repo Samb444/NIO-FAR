@@ -53,6 +53,10 @@ import {
   TiltCard,
   btn,
 } from '../components/ui';
+import {
+  ModulePointsCitoyensAdmin,
+  ModulePointsNoirsAdmin,
+} from '../components/AdminModulesEtape4';
 
 const SUGGESTIONS_ACTEURS: Record<Categorie, string> = {
   dechets: 'SONAGED',
@@ -239,6 +243,7 @@ function TableauDeBordAdmin({
   const [items, setItems] = useState<SignalementAdmin[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [sectionAdmin, setSectionAdmin] = useState<'signalements' | 'points_noirs' | 'points_citoyens'>('signalements');
   const [onglet, setOnglet] = useState<'a_traiter' | 'relances' | 'tous' | 'doublons'>('a_traiter');
   const [selectionId, setSelectionId] = useState<string | null>(null);
   const [detailScoreId, setDetailScoreId] = useState<string | null>(null);
@@ -411,7 +416,37 @@ function TableauDeBordAdmin({
         </div>
       )}
 
+      {/* Navigation entre les 3 grands modules d'administration */}
+      <div className="mt-6 flex flex-wrap items-center gap-2 rounded-3xl border border-line bg-bg-elev p-2 shadow-soft">
+        {(
+          [
+            ['signalements', `1. Signalements & Priorités (${items.length})`],
+            ['points_noirs', '2. Urbanisme prédictif (« Points noirs »)'],
+            ['points_citoyens', '3. Points citoyens & Récompenses (Ledger)'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setSectionAdmin(id)}
+            className={`min-h-11 rounded-2xl px-4 text-sm font-extrabold transition-colors ${
+              sectionAdmin === id
+                ? 'bg-accent text-accent-fg shadow-glow'
+                : 'text-fg-muted hover:bg-fg/5 hover:text-fg'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {sectionAdmin === 'points_noirs' && <ModulePointsNoirsAdmin />}
+      {sectionAdmin === 'points_citoyens' && (
+        <ModulePointsCitoyensAdmin estRelais={user.role === 'relais'} />
+      )}
+
       {/* Liste « À traiter » triée par priorité + Fiche de gestion */}
+      {sectionAdmin === 'signalements' && (
       <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr_1.25fr]">
         {/* Colonne gauche : file de priorisation */}
         <div className="space-y-4">
@@ -560,6 +595,7 @@ function TableauDeBordAdmin({
           )}
         </div>
       </div>
+      )}
     </section>
   );
 }
@@ -992,17 +1028,43 @@ function FicheGestionAdmin({
       )}
 
       {/* Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
         {!estRelais && (
-          <button
-            type="button"
-            disabled={enCours}
-            onClick={() => void basculerDoublon()}
-            className={`${btn.base} ${btn.secondary} text-sm`}
-          >
-            <CopyCheck size={16} aria-hidden />
-            {s.estDoublon ? 'Retirer le marquage doublon' : 'Marquer comme doublon'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={enCours}
+              onClick={() => void basculerDoublon()}
+              className={`${btn.base} ${btn.secondary} text-xs`}
+            >
+              <CopyCheck size={15} aria-hidden />
+              {s.estDoublon ? 'Retirer doublon' : 'Marquer doublon (0 pt)'}
+            </button>
+            <button
+              type="button"
+              disabled={enCours || Boolean(s.estMalveillant)}
+              onClick={async () => {
+                setEnCours(true);
+                setErreur(null);
+                setMessageOk(null);
+                try {
+                  const maj = await api.modifierStatutAdmin(s.id, {
+                    estMalveillant: true,
+                    note: 'Signalement classé comme malveillant / abusif (retrait de points citoyens dans le ledger).',
+                  });
+                  onMaj(maj);
+                  setMessageOk('Signalement marqué malveillant (retrait de points inscrit au ledger).');
+                } catch (err) {
+                  setErreur(messageErreur(err));
+                } finally {
+                  setEnCours(false);
+                }
+              }}
+              className={`${btn.base} min-h-10 bg-[#C8553D]/15 px-4 text-xs text-[#C8553D] hover:bg-[#C8553D]/25`}
+            >
+              {s.estMalveillant ? 'Classé malveillant (-20 pts)' : 'Signaler malveillant (-20 pts)'}
+            </button>
+          </div>
         )}
         <button type="submit" disabled={enCours} className={`${btn.base} ${btn.accent} ml-auto`}>
           {enCours ? <Loader2 size={18} className="animate-spin" aria-hidden /> : <Check size={18} aria-hidden />}

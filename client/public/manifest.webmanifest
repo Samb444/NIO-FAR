@@ -1,0 +1,53 @@
+{
+  "name": "NIO FAR — Suivi citoyen en banlieue de Dakar",
+  "short_name": "NIO FAR",
+  "description": "Signalez, suivez et vérifiez les problèmes de proximité de votre quartier en banlieue de Dakar : déchets, eau stagnante, éclairage public, voirie.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F6F1E7",
+  "theme_color": "#0B6B4F",
+  "categories": ["government", "utilities", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Signaler un problème",
+      "short_name": "Signaler",
+      "description": "Signaler par la voix ou en photo en moins d'une minute",
+      "url": "/signaler"
+    },
+    {
+      "name": "Suivre un code",
+      "short_name": "Suivre",
+      "description": "Rechercher un signalement avec son code NF-XXXXX",
+      "url": "/suivre"
+    },
+    {
+      "name": "Carte & liste",
+      "short_name": "Carte",
+      "description": "Voir tous les signalements du quartier",
+      "url": "/signalements"
+    }
+  ]
+}

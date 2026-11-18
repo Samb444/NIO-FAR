@@ -1,12 +1,15 @@
-/**
- * Client HTTP de l'API NIO FAR (étape 3).
- * Remplace l'ancien service simulé et dialogue directement avec le backend Express + PostgreSQL (/api).
- */
 import type {
   Categorie,
+  ClassementQuartiers,
+  CompteCitoyen,
+  ElementCatalogueRecompense,
+  EntreeLedgerPoints,
   FiltresSignalements,
   IndicateursPublics,
   NouveauSignalement,
+  PayoutProviderType,
+  RapportPointsNoirs,
+  ReponseScenarioDemo,
   SignalementAdmin,
   SignalementPublic,
   Statut,
@@ -30,7 +33,6 @@ export class ErreurIntrouvable extends Error {
   }
 }
 
-/** Identifiant d'appareil anonyme persistant (haché par le serveur avec sel). */
 export function obtenirDeviceIdAnonyme(): string {
   const CLE = 'niofar-device-anon-id';
   try {
@@ -44,7 +46,24 @@ export function obtenirDeviceIdAnonyme(): string {
   }
 }
 
-/** Priorité transparente (utilise le score calculé par l'API ou la formule de repli). */
+const CLE_CITOYEN = 'niofar-citoyen-id';
+export function obtenirCitizenIdLocal(): string | null {
+  try {
+    return localStorage.getItem(CLE_CITOYEN);
+  } catch {
+    return null;
+  }
+}
+
+export function enregistrerCitizenIdLocal(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(CLE_CITOYEN, id);
+    else localStorage.removeItem(CLE_CITOYEN);
+  } catch {
+    /* stockage indisponible */
+  }
+}
+
 export function priorite(
   s: Pick<SignalementPublic, 'gravite' | 'confirmations' | 'priorite' | 'dateCreation'>,
 ): number {
@@ -120,8 +139,45 @@ export interface NioFarApi {
   retirerExemples(): Promise<void>;
   urlOpenDataCsv(): string;
   urlOpenDataJson(): string;
-
-  // Administration & Authentification
+  pointsNoirsPublics(): Promise<RapportPointsNoirs>;
+  pointsNoirsAdmin(): Promise<RapportPointsNoirs>;
+  classementQuartiers(): Promise<ClassementQuartiers>;
+  catalogueRecompensesPublic(): Promise<{
+    mention: string;
+    modePaiement: 'SIMULATION';
+    avertissement: string;
+    providers: { id: PayoutProviderType; nom: string; modeSimulation: boolean; statutPartenariat: string }[];
+    items: ElementCatalogueRecompense[];
+  }>;
+  demanderOtpCitoyen(telephone: string, secteur: string): Promise<{
+    telephoneMasque: string;
+    expiresAt: string;
+    codeOtpDemo: string;
+    avertissement: string;
+    mention: string;
+  }>;
+  verifierOtpCitoyen(
+    telephone: string,
+    code: string,
+    secteur?: string,
+  ): Promise<{ citizen: CompteCitoyen; ledger: EntreeLedgerPoints[] }>;
+  profilCitoyen(citizenId: string): Promise<{ citizen: CompteCitoyen; ledger: EntreeLedgerPoints[] } | null>;
+  echangerRecompenseSimulee(
+    citizenId: string,
+    rewardId: string,
+  ): Promise<{
+    nouveauSolde: number;
+    simulation: {
+      provider: PayoutProviderType;
+      mode: 'SIMULATION';
+      referenceSimulation: string;
+      horodatage: string;
+      avertissement: string;
+    };
+    ledgerEntry: EntreeLedgerPoints;
+  }>;
+  executerEtapeDemo(step: number, citizenId?: string | null): Promise<ReponseScenarioDemo>;
+  reinitialiserDemo(): Promise<{ ok: boolean; ajoutes: number; message: string }>;
   connexionAdmin(email: string, password: string): Promise<{ user: UtilisateurSession; csrfToken: string }>;
   deconnexionAdmin(): Promise<void>;
   sessionAdmin(): Promise<{ user: UtilisateurSession; csrfToken: string } | null>;
@@ -138,6 +194,7 @@ export interface NioFarApi {
       transcriptionSuggeree?: string;
       categorie?: Categorie;
       validerSuggestion?: boolean;
+      estMalveillant?: boolean;
     },
   ): Promise<SignalementAdmin>;
   marquerDoublonAdmin(id: string, estDoublon: boolean, note?: string): Promise<SignalementAdmin>;
@@ -149,6 +206,34 @@ export interface NioFarApi {
     items: SignalementAdmin[];
   }>;
   validerRelanceAdmin(id: string): Promise<SignalementAdmin>;
+  journalPointsAdmin(): Promise<{
+    totalEntrees: number;
+    totalComptesCitoyens: number;
+    entries: EntreeLedgerPoints[];
+    simulationsPaiement: {
+      id: string;
+      citizenId: string;
+      rewardId: string;
+      provider: PayoutProviderType;
+      pointsUtilises: number;
+      statut: string;
+      referenceSimulation: string;
+      telephoneMasque: string;
+      createdAt: string;
+    }[];
+  }>;
+  catalogueRecompensesAdmin(): Promise<{
+    statutProgramme: string;
+    modePaiement: 'SIMULATION';
+    providers: { id: PayoutProviderType; nom: string; modeSimulation: boolean; statutPartenariat: string }[];
+    items: ElementCatalogueRecompense[];
+  }>;
+  creerRecompenseAdmin(payload: Omit<ElementCatalogueRecompense, 'id'>): Promise<ElementCatalogueRecompense>;
+  modifierRecompenseAdmin(
+    id: string,
+    payload: Partial<Omit<ElementCatalogueRecompense, 'id'>>,
+  ): Promise<ElementCatalogueRecompense>;
+  supprimerRecompenseAdmin(id: string): Promise<void>;
 }
 
 class ClientHttpNioFar implements NioFarApi {
@@ -181,18 +266,15 @@ class ClientHttpNioFar implements NioFarApi {
   }
 
   async chercherSimilaires(categorie: Categorie, secteur: string): Promise<SignalementPublic[]> {
-    const params = new URLSearchParams({
-      categorie,
-      secteur,
-      similaires: '1',
-    });
+    const params = new URLSearchParams({ categorie, secteur, similaires: '1' });
     return requete<SignalementPublic[]>(`/reports?${params.toString()}`);
   }
 
   async creerSignalement(d: NouveauSignalement): Promise<SignalementPublic> {
+    const citizenId = d.citizenId !== undefined ? d.citizenId : obtenirCitizenIdLocal();
     return requete<SignalementPublic>('/reports', {
       method: 'POST',
-      body: JSON.stringify(d),
+      body: JSON.stringify({ ...d, citizenId }),
     });
   }
 
@@ -242,6 +324,91 @@ class ClientHttpNioFar implements NioFarApi {
     return `${API_BASE}/public/open-data.json`;
   }
 
+  async pointsNoirsPublics(): Promise<RapportPointsNoirs> {
+    return requete<RapportPointsNoirs>('/public/hotspots');
+  }
+
+  async pointsNoirsAdmin(): Promise<RapportPointsNoirs> {
+    return requete<RapportPointsNoirs>('/admin/hotspots');
+  }
+
+  async classementQuartiers(): Promise<ClassementQuartiers> {
+    return requete<ClassementQuartiers>('/public/leaderboard');
+  }
+
+  async catalogueRecompensesPublic() {
+    return requete<{
+      mention: string;
+      modePaiement: 'SIMULATION';
+      avertissement: string;
+      providers: { id: PayoutProviderType; nom: string; modeSimulation: boolean; statutPartenariat: string }[];
+      items: ElementCatalogueRecompense[];
+    }>('/public/rewards');
+  }
+
+  async demanderOtpCitoyen(telephone: string, secteur: string) {
+    return requete<{
+      telephoneMasque: string;
+      expiresAt: string;
+      codeOtpDemo: string;
+      avertissement: string;
+      mention: string;
+    }>('/citizen/otp/request', {
+      method: 'POST',
+      body: JSON.stringify({ telephone, secteur }),
+    });
+  }
+
+  async verifierOtpCitoyen(telephone: string, code: string, secteur?: string) {
+    const r = await requete<{ citizen: CompteCitoyen; ledger: EntreeLedgerPoints[] }>('/citizen/otp/verify', {
+      method: 'POST',
+      body: JSON.stringify({ telephone, code, secteur }),
+    });
+    enregistrerCitizenIdLocal(r.citizen.id);
+    return r;
+  }
+
+  async profilCitoyen(citizenId: string) {
+    try {
+      return await requete<{ citizen: CompteCitoyen; ledger: EntreeLedgerPoints[] }>(
+        `/citizen/${encodeURIComponent(citizenId)}/profile`,
+      );
+    } catch (e) {
+      if (e instanceof ErreurIntrouvable) return null;
+      throw e;
+    }
+  }
+
+  async echangerRecompenseSimulee(citizenId: string, rewardId: string) {
+    return requete<{
+      nouveauSolde: number;
+      simulation: {
+        provider: PayoutProviderType;
+        mode: 'SIMULATION';
+        referenceSimulation: string;
+        horodatage: string;
+        avertissement: string;
+      };
+      ledgerEntry: EntreeLedgerPoints;
+    }>('/citizen/redeem', {
+      method: 'POST',
+      body: JSON.stringify({ citizenId, rewardId }),
+    });
+  }
+
+  async executerEtapeDemo(step: number, citizenId?: string | null): Promise<ReponseScenarioDemo> {
+    return requete<ReponseScenarioDemo>('/demo/scenario/step', {
+      method: 'POST',
+      body: JSON.stringify({ step, citizenId: citizenId ?? obtenirCitizenIdLocal() }),
+    });
+  }
+
+  async reinitialiserDemo() {
+    return requete<{ ok: boolean; ajoutes: number; message: string }>('/demo/scenario/reset', {
+      method: 'POST',
+    });
+  }
+
   async connexionAdmin(email: string, password: string): Promise<{ user: UtilisateurSession; csrfToken: string }> {
     const r = await requete<{ user: UtilisateurSession; csrfToken: string }>('/auth/login', {
       method: 'POST',
@@ -282,6 +449,7 @@ class ClientHttpNioFar implements NioFarApi {
       transcriptionSuggeree?: string;
       categorie?: Categorie;
       validerSuggestion?: boolean;
+      estMalveillant?: boolean;
     },
   ): Promise<SignalementAdmin> {
     return requete<SignalementAdmin>(`/admin/reports/${encodeURIComponent(id)}/status`, {
@@ -310,6 +478,54 @@ class ClientHttpNioFar implements NioFarApi {
   async validerRelanceAdmin(id: string): Promise<SignalementAdmin> {
     return requete<SignalementAdmin>(`/admin/reminders/${encodeURIComponent(id)}/validate`, {
       method: 'POST',
+    });
+  }
+
+  async journalPointsAdmin() {
+    return requete<{
+      totalEntrees: number;
+      totalComptesCitoyens: number;
+      entries: EntreeLedgerPoints[];
+      simulationsPaiement: {
+        id: string;
+        citizenId: string;
+        rewardId: string;
+        provider: PayoutProviderType;
+        pointsUtilises: number;
+        statut: string;
+        referenceSimulation: string;
+        telephoneMasque: string;
+        createdAt: string;
+      }[];
+    }>('/admin/points/ledger');
+  }
+
+  async catalogueRecompensesAdmin() {
+    return requete<{
+      statutProgramme: string;
+      modePaiement: 'SIMULATION';
+      providers: { id: PayoutProviderType; nom: string; modeSimulation: boolean; statutPartenariat: string }[];
+      items: ElementCatalogueRecompense[];
+    }>('/admin/rewards');
+  }
+
+  async creerRecompenseAdmin(payload: Omit<ElementCatalogueRecompense, 'id'>) {
+    return requete<ElementCatalogueRecompense>('/admin/rewards', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async modifierRecompenseAdmin(id: string, payload: Partial<Omit<ElementCatalogueRecompense, 'id'>>) {
+    return requete<ElementCatalogueRecompense>(`/admin/rewards/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async supprimerRecompenseAdmin(id: string) {
+    await requete(`/admin/rewards/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
     });
   }
 }

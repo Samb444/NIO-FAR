@@ -4,13 +4,21 @@ import { Router, type Request, type Response } from 'express';
 import { desc, eq } from 'drizzle-orm';
 import { getDb } from '../db/index.js';
 import {
+  citizens,
+  payoutRequests,
+  pointsLedger,
   reports,
   reportSuggestions,
+  rewardsCatalog,
   transcriptionJobs,
   type StatutDB,
 } from '../db/schema.js';
+import { seedCatalogueRecompensesParDefaut } from '../db/seedData.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import { SUGGESTIONS_ACTEURS, suggererActeurCompetent } from '../services/actors.js';
+import { listerPayoutProviders } from '../services/payout.js';
+import { appliquerReglesPointsSignalement } from '../services/points.js';
+import { calculerPointsNoirsPredictifs } from '../services/prediction.js';
 import { executerVerificationRelances } from '../services/reminders.js';
 import {
   versSignalementAdmin,
@@ -20,6 +28,7 @@ import { extraireSuggestionCategorie } from '../services/transcription.js';
 import {
   adminDuplicatePatchSchema,
   adminStatusPatchSchema,
+  rewardItemSchema,
 } from '../validation/schemas.js';
 
 export const adminRouter = Router();
@@ -52,6 +61,14 @@ adminRouter.get('/actors', (_req: Request, res: Response) => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* GET /api/admin/hotspots — Urbanisme prédictif (« Points noirs »)           */
+/* -------------------------------------------------------------------------- */
+adminRouter.get('/hotspots', async (_req: Request, res: Response) => {
+  const rapport = await calculerPointsNoirsPredictifs();
+  res.json(rapport);
+});
+
+/* -------------------------------------------------------------------------- */
 /* GET /api/admin/reports — Liste complète triée par priorité décroissante    */
 /* -------------------------------------------------------------------------- */
 adminRouter.get('/reports', async (_req: Request, res: Response) => {
@@ -62,7 +79,6 @@ adminRouter.get('/reports', async (_req: Request, res: Response) => {
   const mapSug = new Map(suggestions.map((s) => [s.reportId, s]));
 
   const enrichis = tous.map((r) => versSignalementAdmin(r, tous, mapSuggestionRow(mapSug.get(r.id))));
-  // Tri par score de priorité décroissant (puis par date de création)
   enrichis.sort((a, b) => b.priorite - a.priorite || b.dateCreation.localeCompare(a.dateCreation));
 
   res.json(enrichis);
@@ -118,7 +134,7 @@ adminRouter.get('/reports/:id/audio', async (req: Request, res: Response) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* PATCH /api/admin/reports/:id/status — Statut + note + acteur + règles      */
+/* PATCH /api/admin/reports/:id/status — Statut + note + acteur + points      */
 /* -------------------------------------------------------------------------- */
 adminRouter.patch('/reports/:id/status', async (req: Request, res: Response) => {
   const id = String(req.params.id || '');
@@ -154,7 +170,8 @@ adminRouter.patch('/reports/:id/status', async (req: Request, res: Response) => 
       d.acteurCompetent !== undefined ||
       d.photoApres !== undefined ||
       d.confirmationHabitant !== undefined ||
-      d.categorie !== undefined;
+      d.categorie !== undefined ||
+      d.estMalveillant !== undefined;
 
     if (changementStatutInterdit || autreChampAdmin) {
       res.status(403).json({
@@ -199,17 +216,21 @@ adminRouter.patch('/reports/:id/status', async (req: Request, res: Response) => 
         ? true
         : cible.verifieParRelais;
 
+  const estMalveillant = d.estMalveillant !== undefined ? d.estMalveillant : cible.estMalveillant;
+
   const maintenant = new Date();
   const noteTrim = d.note?.trim();
-  const noteParDefaut =
-    user.role === 'relais'
+  const noteParDefaut = estMalveillant && !cible.estMalveillant
+    ? 'Signalement classé comme malveillant / abusif par l’administrateur (retrait de points citoyens).'
+    : user.role === 'relais'
       ? 'Vérifié sur place par un relais de quartier.'
       : `Statut mis à jour vers « ${nouveauStatut} »${nouvelActeur ? ` (acteur compétent : ${nouvelActeur})` : ''}.`;
 
   const ajouterEntree =
     nouveauStatut !== cible.statut ||
     Boolean(noteTrim) ||
-    (d.verifieParRelais !== undefined && d.verifieParRelais !== cible.verifieParRelais);
+    (d.verifieParRelais !== undefined && d.verifieParRelais !== cible.verifieParRelais) ||
+    (d.estMalveillant !== undefined && d.estMalveillant !== cible.estMalveillant);
 
   const nouvelHistorique = ajouterEntree
     ? [
@@ -223,13 +244,14 @@ adminRouter.patch('/reports/:id/status', async (req: Request, res: Response) => 
       ]
     : cible.historique;
 
-  const [maj] = await db
+  await db
     .update(reports)
     .set({
       statut: nouveauStatut,
       categorie: nouvelleCategorie,
       acteurCompetent: nouvelActeur,
       verifieParRelais,
+      estMalveillant,
       photoApres: nouvellePhotoApres,
       confirmationHabitant: nouvelleConfirmationHabitant,
       relanceNiveau: nouveauStatut !== cible.statut ? 'aucune' : cible.relanceNiveau,
@@ -237,8 +259,16 @@ adminRouter.patch('/reports/:id/status', async (req: Request, res: Response) => 
       historique: nouvelHistorique,
       dateMiseAJour: maintenant,
     })
-    .where(eq(reports.id, id))
-    .returning();
+    .where(eq(reports.id, id));
+
+  // Attribution / retrait auditable des points citoyens APRÈS vérification par l'admin ou un relais
+  await appliquerReglesPointsSignalement({
+    reportId: id,
+    acteurNom: `${user.nom} (${user.role})`,
+    estMalveillant,
+    maintenant,
+    db,
+  });
 
   // Mise à jour ou validation de la suggestion de transcription (stockée à part)
   if (d.transcriptionSuggeree !== undefined || d.validerSuggestion) {
@@ -273,6 +303,7 @@ adminRouter.patch('/reports/:id/status', async (req: Request, res: Response) => 
     }
   }
 
+  const [maj] = await db.select().from(reports).where(eq(reports.id, id));
   const tous = await db.select().from(reports);
   const [sugMaj] = await db.select().from(reportSuggestions).where(eq(reportSuggestions.reportId, id));
   res.json(versSignalementAdmin(maj, tous, mapSuggestionRow(sugMaj)));
@@ -300,10 +331,10 @@ adminRouter.patch('/reports/:id/duplicate', requireAdmin, async (req: Request, r
   const note =
     parsed.data.note?.trim() ||
     (parsed.data.estDoublon
-      ? 'Signalement marqué comme doublon par l’administrateur.'
+      ? 'Signalement marqué comme doublon par l’administrateur (aucun point citoyen attribué).'
       : 'Marquage doublon retiré par l’administrateur.');
 
-  const [maj] = await db
+  await db
     .update(reports)
     .set({
       estDoublon: parsed.data.estDoublon,
@@ -319,16 +350,23 @@ adminRouter.patch('/reports/:id/duplicate', requireAdmin, async (req: Request, r
         },
       ],
     })
-    .where(eq(reports.id, id))
-    .returning();
+    .where(eq(reports.id, id));
 
+  await appliquerReglesPointsSignalement({
+    reportId: id,
+    acteurNom: `${req.user!.nom} (admin)`,
+    maintenant,
+    db,
+  });
+
+  const [maj] = await db.select().from(reports).where(eq(reports.id, id));
   const tous = await db.select().from(reports);
   const [sug] = await db.select().from(reportSuggestions).where(eq(reportSuggestions.reportId, id));
   res.json(versSignalementAdmin(maj, tous, mapSuggestionRow(sug)));
 });
 
 /* -------------------------------------------------------------------------- */
-/* GET /api/admin/reminders & POST /api/admin/reminders/run — Relances J+3/J+7*/
+/* GET /api/admin/reminders & POST /api/admin/reminders/:id/validate          */
 /* -------------------------------------------------------------------------- */
 adminRouter.get('/reminders', async (_req: Request, res: Response) => {
   const bilan = await executerVerificationRelances();
@@ -382,6 +420,117 @@ adminRouter.post('/reminders/:id/validate', requireAdmin, async (req: Request, r
 
   const tous = await db.select().from(reports);
   res.json(versSignalementAdmin(maj, tous));
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /api/admin/points/ledger — Journal auditable des points citoyens       */
+/* -------------------------------------------------------------------------- */
+adminRouter.get('/points/ledger', async (_req: Request, res: Response) => {
+  const db = await getDb();
+  const entrees = await db.select().from(pointsLedger).orderBy(desc(pointsLedger.createdAt));
+  const comptes = await db.select().from(citizens);
+  const mapCitoyen = new Map(comptes.map((c) => [c.id, c.telephoneMasque]));
+  const demandes = await db.select().from(payoutRequests).orderBy(desc(payoutRequests.createdAt));
+
+  res.json({
+    totalEntrees: entrees.length,
+    totalComptesCitoyens: comptes.length,
+    entries: entrees.map((e) => ({
+      ...e,
+      telephoneMasque: mapCitoyen.get(e.citizenId) || 'Citoyen vérifié',
+      createdAt: e.createdAt.toISOString(),
+    })),
+    simulationsPaiement: demandes.map((d) => ({
+      ...d,
+      telephoneMasque: mapCitoyen.get(d.citizenId) || 'Citoyen vérifié',
+      createdAt: d.createdAt.toISOString(),
+    })),
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET / POST / PATCH / DELETE /api/admin/rewards — Catalogue configurable    */
+/* -------------------------------------------------------------------------- */
+adminRouter.get('/rewards', async (_req: Request, res: Response) => {
+  const db = await getDb();
+  await seedCatalogueRecompensesParDefaut(db);
+  const catalogue = await db.select().from(rewardsCatalog).orderBy(rewardsCatalog.pointsRequis);
+  res.json({
+    statutProgramme: 'Récompenses en cours de lancement',
+    modePaiement: 'SIMULATION',
+    providers: listerPayoutProviders(),
+    items: catalogue,
+  });
+});
+
+adminRouter.post('/rewards', requireAdmin, async (req: Request, res: Response) => {
+  const parsed = rewardItemSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    res.status(400).json({
+      error: 'Données de récompense invalides.',
+      details: parsed.error.flatten().fieldErrors,
+    });
+    return;
+  }
+
+  const d = parsed.data;
+  const db = await getDb();
+  const [cree] = await db
+    .insert(rewardsCatalog)
+    .values({
+      id: crypto.randomUUID(),
+      titre: d.titre,
+      description: d.description,
+      pointsRequis: d.pointsRequis,
+      fournisseurPaiement: d.fournisseurPaiement,
+      sponsorNom: d.sponsorNom,
+      sponsorContact: d.sponsorContact,
+      montantIndicatif: d.montantIndicatif,
+      actif: d.actif,
+    })
+    .returning();
+
+  res.status(201).json(cree);
+});
+
+adminRouter.patch('/rewards/:id', requireAdmin, async (req: Request, res: Response) => {
+  const id = String(req.params.id || '');
+  const parsed = rewardItemSchema.partial().safeParse(req.body || {});
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Mise à jour de récompense invalide.' });
+    return;
+  }
+
+  const db = await getDb();
+  const [exist] = await db.select().from(rewardsCatalog).where(eq(rewardsCatalog.id, id));
+  if (!exist) {
+    res.status(404).json({ error: 'Récompense introuvable.' });
+    return;
+  }
+
+  const [maj] = await db
+    .update(rewardsCatalog)
+    .set({
+      titre: parsed.data.titre ?? exist.titre,
+      description: parsed.data.description ?? exist.description,
+      pointsRequis: parsed.data.pointsRequis ?? exist.pointsRequis,
+      fournisseurPaiement: parsed.data.fournisseurPaiement ?? exist.fournisseurPaiement,
+      sponsorNom: parsed.data.sponsorNom ?? exist.sponsorNom,
+      sponsorContact: parsed.data.sponsorContact ?? exist.sponsorContact,
+      montantIndicatif: parsed.data.montantIndicatif ?? exist.montantIndicatif,
+      actif: parsed.data.actif ?? exist.actif,
+    })
+    .where(eq(rewardsCatalog.id, id))
+    .returning();
+
+  res.json(maj);
+});
+
+adminRouter.delete('/rewards/:id', requireAdmin, async (req: Request, res: Response) => {
+  const id = String(req.params.id || '');
+  const db = await getDb();
+  await db.delete(rewardsCatalog).where(eq(rewardsCatalog.id, id));
+  res.json({ ok: true });
 });
 
 /* -------------------------------------------------------------------------- */

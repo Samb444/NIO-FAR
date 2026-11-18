@@ -4,17 +4,41 @@ import type { CSSProperties, PointerEvent, ReactNode } from 'react';
 import { statutInfos } from '../lib/referentiel';
 import type { Statut } from '../lib/types';
 import { usePrefersReducedMotion } from '../lib/device';
+import { LogoMark } from './Logo';
 
-/* Classes de boutons partagées (zones tactiles ≥ 44 px) */
 export const btn = {
-  base: 'inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 py-2.5 text-base font-semibold transition-[transform,background-color,box-shadow,opacity] duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 select-none',
+  base: 'inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 py-2.5 text-base font-semibold transition-[transform,background-color,box-shadow,opacity,filter] duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 select-none',
   primary: 'bg-ochre text-ink shadow-cta hover:bg-ochre-400',
   accent: 'bg-accent text-accent-fg shadow-glow hover:brightness-110',
   secondary: 'glass text-fg shadow-soft hover:bg-bg-elev',
   ghost: 'text-fg hover:bg-fg/10',
 };
 
-/** Carte qui s'incline légèrement sous le doigt ou la souris (désactivé si mouvement réduit). */
+export function EcranChargementLogo({ label = 'Chargement de NIO FAR…' }: { label?: string }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="mx-auto flex min-h-[52svh] max-w-md flex-col items-center justify-center px-4 py-16 text-center"
+    >
+      <div className="relative grid h-24 w-24 place-items-center">
+        <span aria-hidden className="nf-pulse absolute inset-2 rounded-full bg-accent/25" />
+        <motion.div
+          animate={{ y: [0, -6, 0], scale: [1, 1.04, 1] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          className="relative grid h-18 w-18 place-items-center rounded-3xl bg-bg-elev p-3 shadow-glow"
+        >
+          <LogoMark className="h-12 w-12" />
+        </motion.div>
+      </div>
+      <p className="mt-4 font-display text-lg font-extrabold tracking-tight">
+        NIO <span className="text-accent">FAR</span>
+      </p>
+      <p className="mt-1 text-sm text-fg-muted">{label}</p>
+    </div>
+  );
+}
+
 export function TiltCard({
   children,
   className = '',
@@ -145,7 +169,6 @@ export function BadgeEnAttente() {
   );
 }
 
-/** En-tête de page standard des écrans applicatifs. */
 export function EnTetePage({ titre, intro, children }: { titre: string; intro?: ReactNode; children?: ReactNode }) {
   return (
     <header className="mb-6">

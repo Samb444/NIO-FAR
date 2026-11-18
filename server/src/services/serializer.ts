@@ -76,6 +76,8 @@ export type SignalementPublicAPI = {
   acteurCompetent: string | null;
   acteurSuggere: string;
   relanceNiveau: RelanceNiveauDB;
+  pointsAttribues: number;
+  estMalveillant: boolean;
   dateCreation: string;
   dateMiseAJour: string;
   historique: EntreeHistoriqueDB[];
@@ -99,6 +101,7 @@ export type SuggestionAPI = {
 export type SignalementAdminAPI = Omit<SignalementPublicAPI, 'audio'> & {
   audio: string | null;
   contact: ContactDB | null;
+  citizenId: string | null;
   relanceDate: string | null;
   relanceValideeAdmin: boolean;
   suggestion: SuggestionAPI | null;
@@ -136,6 +139,8 @@ export function versSignalementPublic(
     acteurCompetent: r.acteurCompetent ?? null,
     acteurSuggere,
     relanceNiveau: r.relanceNiveau,
+    pointsAttribues: r.pointsAttribues ?? 0,
+    estMalveillant: Boolean(r.estMalveillant),
     dateCreation: r.dateCreation.toISOString(),
     dateMiseAJour: r.dateMiseAJour.toISOString(),
     historique: r.historique ?? [],
@@ -162,6 +167,7 @@ export function versSignalementAdmin(
     ...pub,
     audio: audioUrl,
     contact: r.contact ?? null,
+    citizenId: r.citizenId ?? null,
     relanceDate: r.relanceDate ? r.relanceDate.toISOString() : null,
     relanceValideeAdmin: r.relanceValideeAdmin,
     suggestion,

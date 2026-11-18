@@ -51,6 +51,12 @@ export default function FicheSignalement() {
   }, [id]);
 
   useEffect(() => {
+    const onDemo = () => recharger();
+    window.addEventListener('niofar:demo-update', onDemo);
+    return () => window.removeEventListener('niofar:demo-update', onDemo);
+  }, [recharger]);
+
+  useEffect(() => {
     if (!s) return;
     void audioWolofPour(s.statut).then(setUrlWolof);
   }, [s]);
@@ -192,6 +198,14 @@ export default function FicheSignalement() {
             </div>
 
             {s.description && <p className="mt-4 text-lg">{s.description}</p>}
+
+            {(s.acteurCompetent || s.acteurSuggere) && (
+              <p className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-accent/30 bg-accent/10 px-3.5 py-1.5 text-xs font-bold text-accent">
+                <span>
+                  Acteur compétent suggéré : <strong>{s.acteurCompetent || s.acteurSuggere}</strong>
+                </span>
+              </p>
+            )}
 
             {/* Bouton Écouter */}
             <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">

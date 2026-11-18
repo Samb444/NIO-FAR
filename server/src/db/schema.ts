@@ -15,6 +15,12 @@ export type CategorieDB = 'dechets' | 'eau_stagnante' | 'eclairage' | 'voirie';
 export type StatutDB = 'recu' | 'a_verifier' | 'transmis' | 'en_cours' | 'resolu';
 export type RoleDB = 'admin' | 'relais';
 export type RelanceNiveauDB = 'aucune' | 'j3' | 'j7';
+export type MotifPointDB =
+  | 'verification_signalement'
+  | 'retrait_doublon'
+  | 'retrait_malveillant'
+  | 'echange_recompense';
+export type PayoutProviderTypeDB = 'wave' | 'orange_money';
 
 export type EntreeHistoriqueDB = {
   date: string;
@@ -37,19 +43,39 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const citizens = pgTable('citizens', {
+  id: uuid('id').primaryKey(),
+  telephoneHash: varchar('telephone_hash', { length: 128 }).notNull().unique(),
+  telephoneMasque: varchar('telephone_masque', { length: 32 }).notNull(),
+  secteur: varchar('secteur', { length: 80 }).notNull().default('Pikine'),
+  pointsBalance: integer('points_balance').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const citizenOtps = pgTable('citizen_otps', {
+  id: uuid('id').primaryKey(),
+  telephoneHash: varchar('telephone_hash', { length: 128 }).notNull(),
+  telephoneMasque: varchar('telephone_masque', { length: 32 }).notNull(),
+  secteur: varchar('secteur', { length: 80 }).notNull().default('Pikine'),
+  code: varchar('code', { length: 10 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  used: boolean('used').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const reports = pgTable('reports', {
-  id: uuid('id').primaryKey(), // UUID généré côté client (idempotence)
-  code: varchar('code', { length: 16 }).notNull().unique(), // NF-XXXXX
+  id: uuid('id').primaryKey(),
+  code: varchar('code', { length: 16 }).notNull().unique(),
   categorie: varchar('categorie', { length: 32 }).$type<CategorieDB>().notNull(),
   description: text('description').notNull().default(''),
   secteur: varchar('secteur', { length: 80 }).notNull(),
-  latitude: doublePrecision('latitude'), // arrondie à 3 décimales
-  longitude: doublePrecision('longitude'), // arrondie à 3 décimales
-  gravite: integer('gravite').notNull().default(2), // 1 | 2 | 3
-  photo: text('photo'), // data URL ou chemin
-  audio: text('audio'), // data URL ou chemin interne (jamais exposé publiquement)
+  latitude: doublePrecision('latitude'),
+  longitude: doublePrecision('longitude'),
+  gravite: integer('gravite').notNull().default(2),
+  photo: text('photo'),
+  audio: text('audio'),
   audioMime: varchar('audio_mime', { length: 64 }),
-  contact: jsonb('contact').$type<ContactDB | null>(), // jamais exposé publiquement
+  contact: jsonb('contact').$type<ContactDB | null>(),
   statut: varchar('statut', { length: 24 }).$type<StatutDB>().notNull().default('recu'),
   estDoublon: boolean('est_doublon').notNull().default(false),
   doublonDeId: uuid('doublon_de_id'),
@@ -62,6 +88,9 @@ export const reports = pgTable('reports', {
   relanceNiveau: varchar('relance_niveau', { length: 16 }).$type<RelanceNiveauDB>().notNull().default('aucune'),
   relanceDate: timestamp('relance_date', { withTimezone: true }),
   relanceValideeAdmin: boolean('relance_validee_admin').notNull().default(false),
+  citizenId: uuid('citizen_id').references(() => citizens.id, { onDelete: 'set null' }),
+  pointsAttribues: integer('points_attribues').notNull().default(0),
+  estMalveillant: boolean('est_malveillant').notNull().default(false),
   historique: jsonb('historique').$type<EntreeHistoriqueDB[]>().notNull().default([]),
   estExemple: boolean('est_exemple').notNull().default(false),
   dateCreation: timestamp('date_creation', { withTimezone: true }).notNull().defaultNow(),
@@ -81,10 +110,6 @@ export const reportConfirmations = pgTable(
   (t) => [uniqueIndex('report_device_unique_idx').on(t.reportId, t.deviceHash)],
 );
 
-/**
- * Suggestions issues de la voix ou de l'extraction de mots-clés.
- * Stockées à part du signalement citoyen et validées/corrigées par l'administrateur.
- */
 export const reportSuggestions = pgTable('report_suggestions', {
   id: uuid('id').primaryKey(),
   reportId: uuid('report_id')
@@ -106,9 +131,6 @@ export const reportSuggestions = pgTable('report_suggestions', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/**
- * File de tâches (table de jobs PostgreSQL) pour la transcription et l'extraction.
- */
 export const transcriptionJobs = pgTable('transcription_jobs', {
   id: uuid('id').primaryKey(),
   reportId: uuid('report_id')
@@ -123,4 +145,49 @@ export const transcriptionJobs = pgTable('transcription_jobs', {
   erreur: text('erreur'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const pointsLedger = pgTable('points_ledger', {
+  id: uuid('id').primaryKey(),
+  citizenId: uuid('citizen_id')
+    .notNull()
+    .references(() => citizens.id, { onDelete: 'cascade' }),
+  reportId: uuid('report_id').references(() => reports.id, { onDelete: 'set null' }),
+  secteur: varchar('secteur', { length: 80 }).notNull(),
+  delta: integer('delta').notNull(),
+  motif: varchar('motif', { length: 40 }).$type<MotifPointDB>().notNull(),
+  description: text('description').notNull(),
+  createdBy: varchar('created_by', { length: 120 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const rewardsCatalog = pgTable('rewards_catalog', {
+  id: uuid('id').primaryKey(),
+  titre: varchar('titre', { length: 160 }).notNull(),
+  description: text('description').notNull().default(''),
+  pointsRequis: integer('points_requis').notNull().default(100),
+  fournisseurPaiement: varchar('fournisseur_paiement', { length: 32 })
+    .$type<PayoutProviderTypeDB>()
+    .notNull()
+    .default('wave'),
+  sponsorNom: varchar('sponsor_nom', { length: 160 }).notNull().default(''),
+  sponsorContact: varchar('sponsor_contact', { length: 160 }).notNull().default(''),
+  montantIndicatif: varchar('montant_indicatif', { length: 80 }).notNull().default(''),
+  actif: boolean('actif').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const payoutRequests = pgTable('payout_requests', {
+  id: uuid('id').primaryKey(),
+  citizenId: uuid('citizen_id')
+    .notNull()
+    .references(() => citizens.id, { onDelete: 'cascade' }),
+  rewardId: uuid('reward_id')
+    .notNull()
+    .references(() => rewardsCatalog.id, { onDelete: 'cascade' }),
+  provider: varchar('provider', { length: 32 }).$type<PayoutProviderTypeDB>().notNull(),
+  pointsUtilises: integer('points_utilises').notNull(),
+  statut: varchar('statut', { length: 32 }).$type<'simule'>().notNull().default('simule'),
+  referenceSimulation: varchar('reference_simulation', { length: 80 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
